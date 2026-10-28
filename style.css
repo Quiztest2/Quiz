@@ -84,3 +84,16 @@ body::after{background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2
 .fig .t{paint-order:stroke;stroke:var(--bg);stroke-width:5px;stroke-linejoin:round}
 .fig.art{background:none;box-shadow:none;border:0}
 details.glass summary{cursor:pointer;font-weight:700}
+
+.tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px;padding-bottom:2px}.tabs .g{white-space:nowrap;flex:none}
+.rc{padding:12px 0;border-bottom:1px dashed var(--bd)}.rn{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.rs{display:flex;gap:12px;align-items:center;margin:4px 0;font-size:.92rem}.rs b{margin-inline-start:auto;color:var(--a1);font-size:1.1rem}
+
+.ft{max-width:680px;margin:0 auto;padding:0 16px 32px;text-align:center}
+.cp{color:var(--a1);font-weight:700;font-size:.9rem;margin:6px 0 14px}
+.sch h3{margin:0 0 14px;font-size:1.05rem;color:var(--a1)}
+.ppl{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.ppl div{padding:12px 8px;border-radius:14px;background:var(--op);border:1px solid var(--bd)}
+.ppl span{display:block;font-size:.72rem;color:var(--mu);margin-bottom:4px}
+.ppl b{font-size:.88rem;line-height:1.5}
+@media(max-width:520px){.ppl{grid-template-columns:1fr}}
