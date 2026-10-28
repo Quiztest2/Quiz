@@ -233,7 +233,7 @@ function art(S){const hs=[...S.name].reduce((a,c)=>(a*31+c.charCodeAt(0))%20,7)+
  [0,1].forEach(si=>S.sec[si].forEach((x,i)=>{const got=S.ans[si][i]!=null,t=S.tt[si][i]??60000,len=got?18+(1-Math.min(1,t/60000))*(si?30:24):8,R=si?92:50,H=si?h2:hs;
   b+=`<line x1="0" y1="${-R}" x2="0" y2="${-R-len}" transform="rotate(${(i/PER*360+(si?7:0)).toFixed(1)})" stroke="hsl(${H},${got?90:15}%,${got?64:45}%)" stroke-width="${si?5:6}" stroke-linecap="round" opacity="${got?1:.3}" style="stroke-dasharray:${len.toFixed(1)};--l:${len.toFixed(1)};animation:ln .7s ${(si*.6+i*.025).toFixed(2)}s both"/>`}));
  return`<svg xmlns="http://www.w3.org/2000/svg" viewBox="-165 -165 330 375"><defs><radialGradient id="g"><stop offset="0" stop-color="hsl(${hs},55%,24%)"/><stop offset="1" stop-color="#0a0907"/></radialGradient></defs><rect x="-165" y="-165" width="330" height="375" rx="26" fill="url(#g)"/><circle r="38" fill="none" stroke="hsl(${hs},80%,70%)" stroke-opacity=".45"/><g><animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="120s" repeatCount="indefinite"/>${b}</g><text y="10" text-anchor="middle" font-size="28" font-weight="800" fill="#fff" font-family="Cairo,sans-serif">${esc([...S.name][0])}</text><text y="182" text-anchor="middle" font-size="15" font-weight="700" fill="#fff" font-family="Cairo,sans-serif">${esc(S.name)}</text><text y="200" text-anchor="middle" font-size="10" fill="#fff" opacity=".6" font-family="Cairo,sans-serif">بصمتك في اختبار القدرات</text></svg>`}
-async function saveRec(rec){try{const r=db.doc('results/'+uid),d=await r.get(),at=d.exists?JSON.parse(JSON.stringify(d.data().attempts||[])):[];if(!at.some(a=>a.ts===rec.ts))at.push(rec);await r.set({uid,name:rec.name,grade:rec.grade,cls:rec.cls,attempts:at});ls.set('bk','');return''}catch(e){ls.set('bk',JSON.stringify(rec));return String((e&&(e.code||e.message))||'error')}}
+async function saveRec(rec){try{await db.doc('results/'+uid).set({uid,name:rec.name,grade:rec.grade,cls:rec.cls,attempts:firebase.firestore.FieldValue.arrayUnion(rec)},{merge:true});ls.set('bk','');return''}catch(e){ls.set('bk',JSON.stringify(rec));return String((e&&(e.code||e.message))||'error')}}
 async function finish(){
  clearInterval(tm);
  const rec={uid,name:S.name,grade:S.grade,cls:S.cls,ts:Date.now(),secs:Math.round((Date.now()-S.t0)/1000),sw:S.sw,
@@ -348,10 +348,13 @@ async function dash(){
 (async()=>{
  try{
   db=firebase.firestore();
-  await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-  if(!firebase.auth().currentUser) await firebase.auth().signInAnonymously();
+  const T=(p,ms,code)=>Promise.race([p,new Promise((_,rj)=>setTimeout(()=>rj({code,message:'انتهت مهلة الاتصال بـ Firebase ('+code+')'}),ms))]);
+  try{await T(firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL),6000,'timeout/persistence')}catch(e){console.warn(e)}
+  /* انتظر استعادة الجلسة المحفوظة أولًا، حتى لا يُستبدل حساب الطالب بحساب مجهول عند تحديث الصفحة */
+  await T(new Promise(r=>{const off=firebase.auth().onAuthStateChanged(()=>{off();r()})}),10000,'timeout/auth-state');
+  if(!firebase.auth().currentUser) await T(firebase.auth().signInAnonymously(),15000,'timeout/anonymous');
   uid=firebase.auth().currentUser.uid;CW=true;
-  await loadBank();
+  try{await T(loadBank(),12000,'timeout/bank')}catch(e){console.warn('تعذر تحميل بنك الأسئلة، سيُستخدم المولّد فقط',e)}
  }catch(e){console.error('Firebase initialization failed:',e);const msg=document.getElementById('app');if(msg){const authFix=e.code==='auth/admin-restricted-operation'?'فعّل تسجيل الدخول المجهول Anonymous: Firebase Console ← Authentication ← Sign-in providers ← Add new provider ← Anonymous ← Enable ثم Save.':'تأكد من إعداد Firebase Authentication وFirestore وقواعد الأمان، ثم حدّث الصفحة.';msg.innerHTML='<div class="glass"><h2>تعذر الاتصال بـ Firebase</h2><div class="mu">'+authFix+'</div><div class="err">'+esc(e.message||'')+'</div></div>'}return}
  home();
 })();
