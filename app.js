@@ -92,15 +92,15 @@ function home(){
  <h1>اختبر قدراتك<br><em>بثقة وتركيز</em></h1>
  <div class="mu">اختبار محاكي للقدرات بتوقيت حقيقي، وبنك أسئلة يتجدد معك في كل محاولة.</div></div>
  <div class="stats"><div><b>${PER*2}</b><span>سؤال</span></div><div><b>2</b><span>قسمان</span></div><div><b>${PER}</b><span>دقيقة لكل قسم</span></div></div>
- <div class="glass">${db&&uid?`<h2>قبل ما تبدأ</h2>
+ <div class="glass">${true?`<h2>قبل ما تبدأ</h2>
  <ul class="rl"><li>${PER} سؤال كمي ثم ${PER} سؤال لفظي</li><li>لكل سؤال دقيقة واحدة فقط</li><li>السؤال اللي ما تجاوب عليه ينتهي وقته ويفوتك</li><li>ما تقدر ترجع لسؤال سابق</li><li>أسئلة جديدة بأرقام وصياغات مختلفة لكل طالب</li><li>الاختبار مرة واحدة فقط لكل اسم</li><li>النتيجة تُحفظ ولا تظهر إلا للمشرف</li></ul>
  <input type="text" id="nm" placeholder="الاسم الكامل (ثلاثي على الأقل)" maxlength="60" autocomplete="off">
  <div class="mu">الصف</div><div class="row" id="gr"><button class="g pk" data-v="ثاني ثانوي">ثاني ثانوي</button><button class="g pk" data-v="ثالث ثانوي">ثالث ثانوي</button></div>
  <div class="mu" style="margin-top:10px">الفصل</div><div class="row" id="cl" style="margin-bottom:14px">${[1,2,3,4,5].map(n=>`<button class="g pk" data-v="${n}">${n}</button>`).join('')}</div>
- <button class="btn" id="go" ${CW===false?'disabled':''}>ابدأ الاختبار ←</button>${CW===false?'<div class="err">حسابك بصلاحية «مشاهدة» فقط ولن تُحفظ نتيجتك. اطلب من المشرف يغيّرها إلى «مساهم» (Contributor) من قائمة المشاركة.</div>':''}
+ <button class="btn" id="go">ابدأ الاختبار ←</button>${CW===false?'<div class="err">حسابك بصلاحية «مشاهدة» فقط ولن تُحفظ نتيجتك. اطلب من المشرف يغيّرها إلى «مساهم» (Contributor) من قائمة المشاركة.</div>':''}
  <div class="err" id="er"></div>`:
  `<h2>سجّل الدخول للبدء</h2><div class="mu">لازم تسجّل دخولك عشان تنحفظ نتيجتك.</div>`}</div>
- ${canAdmin?`<button class="g" id="ad">🔒 لوحة المالك</button>`:''}`;
+ <button class="g" id="ad">🔒 لوحة المالك</button>`;
  document.querySelectorAll('.pk').forEach(b=>b.onclick=()=>{b.parentNode.querySelectorAll('.pk').forEach(x=>x.classList.toggle('on',x===b))});
  document.querySelectorAll('.stats b').forEach(b=>{const n=+b.textContent;let k=0;const t=setInterval(()=>{k++;b.textContent=Math.round(n*k/20);if(k>=20)clearInterval(t)},35)});const go=$('go');if(go)go.onclick=start;const ad=$('ad');if(ad)ad.onclick=adminGate;
 }
@@ -109,6 +109,7 @@ const norm=n=>String(n).replace(/[\u064B-\u065F\u0640]/g,'').replace(/[أإآ]/g
 
 /* ---------- الاختبار ---------- */
 async function start(){
+ if(!db||!uid){$('er').textContent='سجّل دخولك أولًا عشان تبدأ';return}
  const name=$('nm').value.trim();
  if(name.split(/\s+/).length<3){$('er').textContent='اكتب اسمك الكامل (ثلاثة أسماء على الأقل)';return}
  const gr=document.querySelector('#gr .on'),cl=document.querySelector('#cl .on');
@@ -202,7 +203,6 @@ const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
 async function kdf(pw,salt,it){const k=await crypto.subtle.importKey('raw',enc.encode(pw),'PBKDF2',false,['deriveBits']);return b64(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt,iterations:it},k,256))}
 const PWS='Zgx4UoTLiIBplA9MH/XgZQ==',PWH='x54SDRuLYDtVLkNfcLUplyLabuXBHmdOe1yFFpWuRuY=';
 async function adminGate(){
- if(!canAdmin)return home();
  app.innerHTML=`<div class="top"><span class="chip">🔒 منطقة المالك</span><button class="g" id="bk">رجوع</button></div>
  <div class="glass"><h2>أدخل كلمة السر</h2>
  <input type="password" id="pw" placeholder="كلمة السر" autocomplete="off">
@@ -222,20 +222,27 @@ async function adminGate(){
 async function dash(){
  app.innerHTML='<div class="glass">جاري تحميل اللوحة…</div>';
  const K={};try{(await db.collection('keys').get()).docs.forEach(d=>Object.assign(K,d.data().a||{}))}catch(e){}
- let RES=[],LIVE=[],CL=[];const ok=a=>a.id[0]==='g'?gen(a.id).a===a.pick:K[a.id]===a.pick;
+ let TAB='o',RES=[],LIVE=[],CL=[];const ok=a=>a.id[0]==='g'?gen(a.id).a===a.pick:K[a.id]===a.pick;
  const draw=()=>{
   const rows=RES.map(r=>{let q=0,v=0;(r.answers||[]).forEach(a=>{if(ok(a))a.t==='q'?q++:v++});return{...r,q,v,tot:q+v}}).sort((a,b)=>b.ts-a.ts);
   const n=rows.length,avg=f=>n?(rows.reduce((s,r)=>s+f(r),0)/n):0;
   const live=LIVE.filter(x=>!x.done&&Date.now()-x.ts<240000);
-  $('dv').innerHTML=`<div class="kp"><div><span class="mu">عدد الاختبارات</span><b>${n}</b></div><div><span class="mu">متوسط الدرجة</span><b>${avg(r=>r.tot).toFixed(1)}/50</b></div>
+  const T=[['o','📊 نظرة عامة'],['r','النتائج'],['c','المسجّلون'],['q','الأسئلة']];
+  const tabs=`<div class="tabs">${T.map(t=>`<button class="g pk tb${TAB===t[0]?' on':''}" data-t="${t[0]}">${t[1]}</button>`).join('')}</div>`;
+  const ov=`<div class="kp"><div><span class="mu">عدد الاختبارات</span><b>${n}</b></div><div><span class="mu">متوسط الدرجة</span><b>${avg(r=>r.tot).toFixed(1)}/50</b></div>
   <div><span class="mu">متوسط الكمي</span><b>${avg(r=>r.q).toFixed(1)}/25</b></div><div><span class="mu">متوسط اللفظي</span><b>${avg(r=>r.v).toFixed(1)}/25</b></div>
-  <div><span class="mu">متوسط الوقت</span><b>${Math.round(avg(r=>r.secs)/60)} د</b></div><div><span class="mu">أسئلة في البنك</span><b>${bank.length}</b></div></div>
-  <div class="glass" style="margin-top:14px"><h2><span class="dot"></span>مباشر الآن (${live.length})</h2>${live.length?live.map(x=>`<div class="lv"><span>${esc(x.name)}</span><span class="mu">${SEC[x.sec]?.n||''} · سؤال ${(x.q||0)+1}/${PER}</span></div>`).join(''):'<div class="mu">لا أحد يختبر الآن</div>'}</div>
-  <div class="glass"><h2>🔒 المسجّلون (${CL.length})</h2><div class="mu">كل اسم يختبر مرة واحدة. اضغط 🔓 للسماح لاسم بإعادة الاختبار.</div>${CL.map(c=>`<div class="lv"><span>${esc(c.name||'')}</span><button class="g ul" data-id="${esc(c.id)}">🔓</button></div>`).join('')}</div>
-  <div class="glass"><div class="top"><h2 style="margin:0">النتائج</h2><button class="g" id="cs">تصدير Excel</button></div><div class="tw"><table><tr><th>الاسم</th><th>الصف</th><th>الفصل</th><th>كمي</th><th>لفظي</th><th>المجموع</th><th>الوقت</th><th>تبديل تبويب</th><th>التاريخ</th></tr>
-  ${rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.grade||'')}</td><td>${esc(r.cls||'')}</td><td>${r.q}/25</td><td>${r.v}/25</td><td><b>${r.tot}/50</b></td><td>${Math.round(r.secs/60)} د</td><td${r.sw>2?' style="color:var(--er)"':''}>${r.sw}</td><td>${new Date(r.ts).toLocaleString('ar-SA')}</td></tr>`).join('')}</table></div>${n?'':'<div class="mu">لا توجد نتائج بعد</div>'}</div>`;
+  <div><span class="mu">متوسط الوقت</span><b>${Math.round(avg(r=>r.secs)/60)} د</b></div><div><span class="mu">أسئلة مرفوعة</span><b>${bank.length}</b></div></div>
+  <div class="glass" style="margin-top:14px"><h2><span class="dot"></span>مباشر الآن (${live.length})</h2>${live.length?live.map(x=>`<div class="lv"><span>${esc(x.name)}</span><span class="mu">${SEC[x.sec]?.n||''} · سؤال ${(x.q||0)+1}/${PER}</span></div>`).join(''):'<div class="mu">لا أحد يختبر الآن</div>'}</div>`;
+  const rs=`<div class="glass"><div class="top"><h2 style="margin:0">النتائج (${n})</h2><button class="g" id="cs">تصدير Excel</button></div>
+  ${rows.map(r=>`<div class="rc"><div class="rn"><b>${esc(r.name)}</b><span class="mu">${esc(r.grade||'')} · فصل ${esc(r.cls||'')}</span></div>
+  <div class="rs"><span>كمي ${r.q}/25</span><span>لفظي ${r.v}/25</span><b>${r.tot}/50</b></div>
+  <div class="mu">⏱ ${Math.round(r.secs/60)} د · تبديل تبويب <span${r.sw>2?' style="color:var(--er)"':''}>${r.sw}</span> · ${new Date(r.ts).toLocaleDateString('ar-SA')}</div></div>`).join('')}${n?'':'<div class="mu">لا توجد نتائج بعد</div>'}</div>`;
+  const cl=`<div class="glass"><h2>🔒 المسجّلون (${CL.length})</h2><div class="mu">كل اسم يختبر مرة واحدة. اضغط 🔓 للسماح لاسم بإعادة الاختبار.</div>${CL.map(c=>`<div class="lv"><span>${esc(c.name||'')}</span><button class="g ul" data-id="${esc(c.id)}">🔓</button></div>`).join('')}</div>`;
+  $('dv').innerHTML=tabs+(TAB==='o'?ov:TAB==='r'?rs:TAB==='c'?cl:'');
+  document.querySelectorAll('.tb').forEach(b=>b.onclick=()=>{TAB=b.dataset.t;draw()});
+  $('qs').style.display=TAB==='q'?'':'none';
   document.querySelectorAll('.ul').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await db.doc('claims/'+b.dataset.id).delete()}catch(e){b.disabled=false}});
-  $('cs').onclick=async()=>{const dl=await claude.use('downloads');if(!dl||!window.XLSX)return;
+  if($('cs'))$('cs').onclick=async()=>{const dl=await claude.use('downloads');if(!dl||!window.XLSX)return;
    const L=[...rows].sort((a,b)=>String(a.grade||'').localeCompare(String(b.grade||''),'ar')||(a.cls||0)-(b.cls||0)||String(a.name).localeCompare(String(b.name),'ar'));
    const ws=XLSX.utils.aoa_to_sheet([['الاسم','الصف','الفصل','الكمي (من 25)','اللفظي (من 25)','المجموع (من 50)'],...L.map(r=>[String(r.name),r.grade||'',r.cls||'',r.q,r.v,r.tot])]);
    ws['!cols']=[{wch:34},{wch:12},{wch:8},{wch:14},{wch:14},{wch:15}];const wb=XLSX.utils.book_new();wb.Workbook={Views:[{RTL:true}]};XLSX.utils.book_append_sheet(wb,ws,'النتائج');
@@ -245,10 +252,10 @@ async function dash(){
    try{await dl.save({filename:'results.xlsx',data:XLSX.write(wb,{type:'array',bookType:'xlsx'})})}catch(e){}};
  };
  app.innerHTML=`<div class="top"><span class="chip">🛡️ لوحة المالك</span><div class="row"><button class="g" id="ex">خروج</button></div></div><div id="dv"></div>
- <div class="glass"><h2>📊 رفع الأسئلة من Excel</h2><div class="mu">الأعمدة بالترتيب: النوع (كمي/لفظي) · السؤال · أ · ب · ج · د · الإجابة (أ/ب/ج/د). ملف xlsx أو csv. الأسئلة المرفوعة تُخلط خياراتها تلقائيًا، ويُكمّلها النظام بأسئلة مولّدة لا تتكرر.</div>
+ <div id="qs" style="display:none"><div class="glass"><h2>📊 رفع الأسئلة من Excel</h2><div class="mu">الأعمدة بالترتيب: النوع (كمي/لفظي) · السؤال · أ · ب · ج · د · الإجابة (أ/ب/ج/د). ملف xlsx أو csv. الأسئلة المرفوعة تُخلط خياراتها تلقائيًا، ويُكمّلها النظام بأسئلة مولّدة لا تتكرر.</div>
  <div class="row" style="margin-top:10px"><label class="g">اختر ملف<input type="file" id="xf" accept=".xlsx,.xls,.csv" hidden></label><button class="g" id="tp">تحميل القالب</button></div><div class="mu" id="xm"></div></div>
  <details class="glass"><summary>⚙️ إضافة أسئلة بصيغة JSON (متقدم)</summary><div class="mu">الصيغة: <code dir="ltr">[{"t":"v","q":"السؤال","o":["أ","ب","ج","د"],"a":0}]</code> — t: ‏q كمي أو v لفظي، a رقم الإجابة الصحيحة من 0. الإجابات تنحفظ في مكان مغلق على المالك فقط.</div>
- <textarea id="js"></textarea><button class="g" id="im">استيراد</button> <span class="mu" id="am"></span></details>`;
+ <textarea id="js"></textarea><button class="g" id="im">استيراد</button> <span class="mu" id="am"></span></details></div>`;
  $('xf').onchange=async e=>{const f=e.target.files[0];if(!f)return;const m=$('xm'),M={'أ':0,'ا':0,'ب':1,'ج':2,'د':3,a:0,b:1,c:2,d:3};
   try{if(!window.XLSX)throw 0;const wb=XLSX.read(await f.arrayBuffer(),{type:'array'}),list=[];
    XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''}).forEach(r=>{const h=String(r[0]).trim(),t=/^(q|ك)/i.test(h)?'q':/^(v|ل)/i.test(h)?'v':null;if(!t)return;
