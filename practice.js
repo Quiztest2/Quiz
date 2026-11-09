@@ -124,13 +124,17 @@ function practiceHome(){
  app.innerHTML=`<div class="top"><span class="chip">📚 مركز التدريب</span><button class="g" id="pb">رجوع</button></div>
  ${levelCard()}
  ${(()=>{const u=firebase.auth().currentUser;return u&&!u.isAnonymous?'':'<div class="mu" style="margin:-4px 4px 12px">سجّل دخولك بحساب ليُحفظ تقدمك ويظهر لمعلمك.</div>'})()}
- ${Object.keys(QSEC).length+Object.keys(PSEC).length?`<button class="prc" id="mx"><span>⚡ تحدي مختلط</span><small>٢٠ سؤالاً كمي ولفظي، لكل سؤال دقيقة واحدة، ثم مراجعة أخطائك</small></button>`:'<div class="glass" style="text-align:center"><div class="big">📭</div><h2>لا توجد أسئلة تدريب حالياً</h2><div class="mu">ستُضاف أسئلة التدريب قريباً.</div></div>'}
+ ${Object.values(QSEC).some(a=>a.length)+Object.values(PSEC).some(a=>a.length)?`<button class="prc" id="mx"><span>⚡ تحدي مختلط</span><small>٢٠ سؤالاً كمي ولفظي، لكل سؤال دقيقة واحدة، ثم مراجعة أخطائك</small></button>`:'<div class="glass" style="text-align:center"><div class="big">📭</div><h2>لا توجد أسئلة تدريب حالياً</h2><div class="mu">ستُضاف أسئلة التدريب قريباً.</div></div>'}
  ${Object.keys(QSEC).length?`<div class="glass"><h2>📐 الكمي</h2><div class="pg">${Object.keys(QSEC).map(tile).join('')}</div></div>`:''}
  ${Object.keys(PSEC).length?`<div class="glass"><h2>📝 اللفظي</h2><div class="pg">${Object.keys(PSEC).map(tile).join('')}</div></div>`:''}`;
  $('pb').onclick=home;levelBind();{const mx=$('mx');if(mx)mx.onclick=practiceMix}
  app.querySelectorAll('.tl').forEach(b=>b.onclick=()=>practiceRun(QSEC[b.dataset.k]||PSEC[b.dataset.k],b.dataset.k));
 }
 function practiceMix(){
+ if(![...Object.values(QSEC),...Object.values(PSEC)].some(a=>a.length)){
+  app.innerHTML='<div class="glass"><h2>لا توجد أسئلة تدريب حالياً</h2><button class="g" id="backPractice">رجوع للتصنيفات</button></div>';
+  document.getElementById('backPractice').onclick=practiceHome;return;
+ }
  const one=(o,k)=>{const s=o[k],q=typeof s==='function'?s():_p(s);return Object.assign({},q,{cat:k})};
  const qpool=[],pool=[];Object.keys(QSEC).forEach(k=>QSEC[k].forEach(x=>qpool.push(Object.assign({},x,{cat:k}))));Object.keys(PSEC).forEach(k=>PSEC[k].forEach(x=>pool.push(Object.assign({},x,{cat:k}))));
  practiceRun(null,'تحدي مختلط',{qs:[..._sh(qpool).slice(0,10),..._sh(pool).slice(0,10)],timed:true});
@@ -138,6 +142,11 @@ function practiceMix(){
 function genUnique(f,n){const seen=new Set(),out=[];let t=0;while(out.length<n&&t<n*40){t++;const q=f();if(seen.has(q.q))continue;seen.add(q.q);out.push(q)}while(out.length<n)out.push(f());return out}
 function practiceRun(src,name,opt){
  opt=opt||{};S=null;clearInterval(tm);
+ if(!opt.qs?.length && (!src || (Array.isArray(src)&&src.length===0))){
+  app.innerHTML='<div class="glass"><h2>لا توجد أسئلة في هذا التصنيف حالياً</h2><div class="mu">سيُضاف المحتوى قريباً.</div><button class="g" id="backPractice">رجوع للتصنيفات</button></div>';
+  document.getElementById('backPractice').onclick=practiceHome;return;
+ }
+
  const qs=(opt.qs||(typeof src==='function'?genUnique(src,PN):_sh((opt.avoid&&src.filter(x=>!opt.avoid.has(x.q)).length>=3)?src.filter(x=>!opt.avoid.has(x.q)):src).slice(0,PN))).map(pMix);
  const xp0=Prog.get().xp,wrong=[];let i=0,sc=0;
  const end=()=>{
