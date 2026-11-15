@@ -22,14 +22,30 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if isAdmin();
     }
+    // حد المحاولات الأسبوعية: العداد يزيد بمقدار 1 فقط، ولا يُصفَّر إلا عند بداية أسبوع جديد
+    // بداية الأسبوع: الأحد 12:00 ص بتوقيت الرياض (UTC+3، بدون توقيت صيفي)
+    function currentDay() { return (request.time.toMillis() + 10800000) / 86400000; }
+    function currentWeek() { return (currentDay() - ((currentDay() + 4) % 7)) * 86400000 - 10800000; }
     match /claims/{uid} {
       allow read: if signedIn();
-      allow create, update: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.c == 1
+        && request.resource.data.wk == currentWeek()
+        && request.resource.data.name is string && request.resource.data.name.size() <= 80;
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 80
+        && request.resource.data.wk == currentWeek()
+        && (
+          (request.resource.data.wk == resource.data.get('wk', 0) && request.resource.data.c == resource.data.get('c', 0) + 1)
+          || (resource.data.get('wk', 0) < currentWeek() && request.resource.data.c == 1)
+        );
       allow delete: if isAdmin();
     }
     match /results/{uid} {
       allow read: if isAdmin();
-      allow create, update: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 80
+        && request.resource.data.attempts is list && request.resource.data.attempts.size() <= 400;
       allow delete: if isAdmin();
     }
     match /live/{uid} {
@@ -45,6 +61,10 @@ service cloud.firestore {
     }
     match /data/users/{uid}/used {
       allow read, write: if signedIn() && request.auth.uid == uid || isAdmin();
+    }
+    match /reports/{id} {
+      allow create: if signedIn() && request.resource.data.q is string && request.resource.data.q.size() <= 1500 && request.resource.data.ts is number;
+      allow read, delete: if isAdmin();
     }
     match /{document=**} { allow read, write: if false; }
   }

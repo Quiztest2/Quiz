@@ -116,6 +116,17 @@ if(perfPref()==='auto'&&!document.documentElement.classList.contains('lite'))set
 const PN=20;
 const PIC={'النسبة المئوية':'٪','النسب والتناسب':'⚖️','السرعة والزمن':'🚗','الجبر':'𝑥','الهندسة':'📐','المتوسط':'📊','الخصم والتخفيضات':'🏷️','الكسور':'½','العمليات الحسابية':'➗','التناظر اللفظي':'🔗','إكمال الجمل':'✍️','المفردة الشاذة':'🧩','استيعاب المقروء':'📖','الخطأ السياقي':'🎯','المفردات والمعاني':'🗝️'};
 const pMix=q=>{const o=_sh(q.o.map((t,k)=>[t,k]));return{q:q.q,e:q.e,cat:q.cat,g:q.g,o:o.map(x=>x[0]),c:o.findIndex(x=>x[1]===q.c)}};
+const SRS={
+ k:'qsrs',
+ all(){try{return JSON.parse(localStorage.getItem(this.k)||'[]')}catch(e){return[]}},
+ put(a){try{localStorage.setItem(this.k,JSON.stringify(a))}catch(e){}},
+ day(){return Math.floor(Date.now()/864e5)},
+ due(){const d=this.day();return this.all().filter(x=>x.due<=d)},
+ hit(q,ok){if(q.g)return;const a=this.all(),x=a.find(z=>z.q===q.q);
+  if(!ok){if(x){x.int=1;x.due=this.day()+1}else a.push({q:q.q,o:q.o.slice(),c:q.c,e:q.e||'',cat:q.cat||'',int:1,due:this.day()+1})}
+  else if(x){x.int*=2;if(x.int>=32)a.splice(a.indexOf(x),1);else x.due=this.day()+x.int}
+  this.put(a)}
+};
 function practiceHome(){
  S=null;clearInterval(tm);
  const d=Prog.get();
@@ -125,9 +136,10 @@ function practiceHome(){
  ${levelCard()}
  ${(()=>{const u=firebase.auth().currentUser;return u&&!u.isAnonymous?'':'<div class="mu" style="margin:-4px 4px 12px">سجّل دخولك بحساب ليُحفظ تقدمك ويظهر لمعلمك.</div>'})()}
  ${Object.values(QSEC).some(a=>a.length)+Object.values(PSEC).some(a=>a.length)?`<button class="prc" id="mx"><span>⚡ تحدي مختلط</span><small>٢٠ سؤالاً كمي ولفظي، لكل سؤال دقيقة واحدة، ثم مراجعة أخطائك</small></button>`:'<div class="glass" style="text-align:center"><div class="big">📭</div><h2>لا توجد أسئلة تدريب حالياً</h2><div class="mu">ستُضاف أسئلة التدريب قريباً.</div></div>'}
- ${Object.keys(QSEC).length?`<div class="glass"><h2>📐 الكمي</h2><div class="pg">${Object.keys(QSEC).map(tile).join('')}</div></div>`:''}
+ ${SRS.due().length?`<button class="prc" id="srs"><span>🔁 مراجعة اليوم (${_fa(SRS.due().length)})</span><small>أسئلة أخطأت فيها سابقاً، تعود إليك في الوقت المناسب لتثبيتها</small></button>`:''}
+  ${Object.keys(QSEC).length?`<div class="glass"><h2>📐 الكمي</h2><div class="pg">${Object.keys(QSEC).map(tile).join('')}</div></div>`:''}
  ${Object.keys(PSEC).length?`<div class="glass"><h2>📝 اللفظي</h2><div class="pg">${Object.keys(PSEC).map(tile).join('')}</div></div>`:''}`;
- $('pb').onclick=home;levelBind();{const mx=$('mx');if(mx)mx.onclick=practiceMix}
+ $('pb').onclick=home;levelBind();{const mx=$('mx');if(mx)mx.onclick=practiceMix}{const sr=$('srs');if(sr)sr.onclick=()=>practiceRun(null,'مراجعة اليوم',{qs:SRS.due().slice(0,15).map(x=>({q:x.q,o:x.o,c:x.c,e:x.e,cat:x.cat})),srs:true})}
  app.querySelectorAll('.tl').forEach(b=>b.onclick=()=>practiceRun(QSEC[b.dataset.k]||PSEC[b.dataset.k],b.dataset.k));
 }
 function practiceMix(){
@@ -171,10 +183,11 @@ function practiceRun(src,name,opt){
   <div class="bar2" style="margin-bottom:14px"><i style="width:${i/qs.length*100}%"></i></div>
   <div class="glass"><div class="qq qp">${esc(q.q)}</div>${q.o.map((t,k)=>`<button class="op" data-k="${k}"><i>${'أبجد'[k]}</i>${esc(t)}</button>`).join('')}<div id="fb"></div></div>`;
   const reveal=k=>{
-   if(done)return;done=true;clearInterval(tm);const ok=k===q.c;if(ok)sc++;else wrong.push(q);Prog.record(q.cat||name,ok,{k:q.g?'g':qh(q.q),t:Math.round((Date.now()-t0)/1000),q:(!ok&&!q.g)?q.q.slice(0,50):'',x:(!ok&&!q.g&&k>=0)?q.o[k].slice(0,40):''});
+   if(done)return;done=true;clearInterval(tm);const ok=k===q.c;if(ok)sc++;else wrong.push(q);SRS.hit(q,ok);Prog.record(q.cat||name,ok,{k:q.g?'g':qh(q.q),t:Math.round((Date.now()-t0)/1000),q:(!ok&&!q.g)?q.q.slice(0,50):'',x:(!ok&&!q.g&&k>=0)?q.o[k].slice(0,40):''});
    app.querySelectorAll('.op').forEach((x,j)=>{x.disabled=true;if(j===q.c)x.classList.add('ok');else if(j===k)x.classList.add('no')});
    $('fb').innerHTML=`<div class="ex"><b>${ok?'✅ إجابة صحيحة':(k<0?'⏰ انتهى الوقت · ':'❌ ')+'الإجابة الصحيحة: '+esc(q.o[q.c])}</b><div class="mu">💡 ${esc(q.e||'')}</div>${ok||!LES[q.cat||name]?'':'<div class="mu tip2">🧭 القاعدة: '+esc(LES[q.cat||name]).replace(/\n/g,'<br>')+'</div>'}</div><button class="btn" id="nx" style="margin-top:12px">${i+1<qs.length?'السؤال التالي':'عرض النتيجة'}</button>`;
-   $('nx').onclick=()=>{i++;i<qs.length?show():end()};$('nx').focus()};
+   $('fb').insertAdjacentHTML('beforeend','<button class="g rq" style="margin-top:8px;width:100%">⚠️ أبلغ عن خطأ في السؤال</button>');const rqb=$('fb').querySelector('.rq');rqb.onclick=()=>reportQ(q,'practice',rqb);
+    $('nx').onclick=()=>{i++;i<qs.length?show():end()};$('nx').focus()};
   app.querySelectorAll('.op').forEach(b=>b.onclick=()=>reveal(+b.dataset.k));
   if(opt.timed)tm=setInterval(()=>{t--;const c=$('ck');if(c){c.textContent='⏱ '+_fa(t);c.classList.toggle('lo',t<=10)}if(t<=0)reveal(-1)},1000);
  };
