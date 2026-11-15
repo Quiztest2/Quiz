@@ -32,7 +32,8 @@ function reportQ(q,src,btn){const u=firebase.auth().currentUser;if(!db||!u)retur
 async function retryPending(){try{const p=JSON.parse(ls.get('bk')||'null');if(p&&uid&&p.uid===uid){await saveRec(p)}}catch(e){}}
 let _retryT=null;function queueRetry(){clearTimeout(_retryT);_retryT=setTimeout(async()=>{await retryPending();if(ls.get('bk'))queueRetry()},20000)}
 window.addEventListener('online',()=>{retryPending()});
-async function loadBank(){const s=await db.collection('bank').get();bank=[];s.docs.forEach(d=>bank.push(...((d.data()||{}).items||[])));addPracticeBank()}
+/* الأسئلة من ملفات الموقع فقط (بدون Firestore)، والتصحيح يتم في المتصفح */
+async function loadBank(){bank=[];addPracticeBank()}
 /* لو بنك الاختبار ناقص (أقل من PER لكل قسم) نكمّله من أسئلة التدريب: الكمي من QSEC واللفظي من PSEC. الإجابة الصحيحة دائماً الخيار 0 قبل الخلط */
 function addPracticeBank(){bank=bank.filter(x=>String(x.id)[0]!=='p');
  /* الكمي: من بنك الإصدارات فقط (QBANK_Q)، والإجابة الصحيحة تُنقل لأول خيار قبل الخلط */
