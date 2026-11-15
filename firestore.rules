@@ -74,7 +74,8 @@ service cloud.firestore {
       allow update, delete: if false;
     }
     match /reports/{id} {
-      allow create: if signedIn() && request.resource.data.q is string && request.resource.data.q.size() <= 1500 && request.resource.data.ts is number;
+      allow create, update: if signedIn() && request.resource.data.by == request.auth.uid
+        && request.resource.data.q is string && request.resource.data.q.size() <= 1500 && request.resource.data.ts is number;
       allow read, delete: if isAdmin();
     }
     match /{document=**} { allow read, write: if false; }
