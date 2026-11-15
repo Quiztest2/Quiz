@@ -32,8 +32,7 @@ function reportQ(q,src,btn){const u=firebase.auth().currentUser;if(!db||!u)retur
 async function retryPending(){try{const p=JSON.parse(ls.get('bk')||'null');if(p&&uid&&p.uid===uid){await saveRec(p)}}catch(e){}}
 let _retryT=null;function queueRetry(){clearTimeout(_retryT);_retryT=setTimeout(async()=>{await retryPending();if(ls.get('bk'))queueRetry()},20000)}
 window.addEventListener('online',()=>{retryPending()});
-/* الأسئلة من ملفات الموقع فقط (بدون Firestore)، والتصحيح يتم في المتصفح */
-async function loadBank(){bank=[];addPracticeBank()}
+async function loadBank(){const s=await db.collection('bank').get();bank=[];s.docs.forEach(d=>bank.push(...((d.data()||{}).items||[])));addPracticeBank()}
 /* لو بنك الاختبار ناقص (أقل من PER لكل قسم) نكمّله من أسئلة التدريب: الكمي من QSEC واللفظي من PSEC. الإجابة الصحيحة دائماً الخيار 0 قبل الخلط */
 function addPracticeBank(){bank=bank.filter(x=>String(x.id)[0]!=='p');
  /* الكمي: من بنك الإصدارات فقط (QBANK_Q)، والإجابة الصحيحة تُنقل لأول خيار قبل الخلط */
@@ -494,6 +493,7 @@ async function dash(){loadXLSX().catch(()=>{});
  const backupBox=()=>{const days=BK?Math.floor((Date.now()-BK)/864e5):null;
   return `<div class="glass" style="margin-bottom:12px"><h2>💾 النسخ الاحتياطي</h2><div class="mu">آخر نسخة: ${BK?new Date(BK).toLocaleString('ar-SA')+' (قبل '+days+' يوم)':'لم تُحفظ بعد'}</div><button class="g" id="bkB" style="margin-top:10px;width:100%">⬇️ تنزيل نسخة الآن (JSON)</button></div>`};
  const auditBox=()=>`<div class="glass"><h2>🧾 سجل التعديلات</h2>${AUD.length?AUD.map(x=>`<div class="lv"><span>${esc(x.action)} <span class="mu">${esc(x.target||'')}</span></span><span class="mu" dir="ltr">${new Date(x.ts).toLocaleString('ar-SA')}</span></div>`).join(''):'<div class="mu">لا توجد تعديلات مسجّلة بعد</div>'}</div>`;
+ const exportBankBox=()=>`<div class="glass" style="margin-bottom:12px"><h2>📤 تصدير بنك الأسئلة</h2><div class="mu">ينزّل كل الأسئلة مع إجاباتها في ملف JSON، عشان ننقلها للموقع.</div><button class="g" id="exB" style="margin-top:10px;width:100%">⬇️ تصدير البنك الآن</button></div>`;
  const draw0=()=>{
   const rows=RES.map(r=>{let q=0,v=0;(r.answers||[]).forEach(a=>{if(ok(a))a.t==='q'?q++:v++});return{...r,q:q*PT,v:v*PT,tot:(q+v)*PT}}).sort((a,b)=>b.ts-a.ts);
   {const cnt={};[...rows].sort((a,b)=>a.ts-b.ts).forEach(r=>{const k=r.uid||r.name;cnt[k]=(cnt[k]||0)+1;r.n=cnt[k]})}
@@ -587,10 +587,11 @@ async function dash(){loadXLSX().catch(()=>{});
    <div class="glass"><h2>🧭 المهارات (الأضعف أولاً)</h2>${cats.map(row).join('')}</div>
    <div class="glass"><h2>🎯 القوالب والأسئلة المرفوعة (تجميع)</h2>${qs.slice(0,25).map(row).join('')}${qs.length>25?`<div class="mu">عُرض أعلى ٢٥ من ${qs.length}. صدّر Excel لرؤية الكل.</div>`:''}</div>`};
   const an=TAB==='a'?analysis():'';
-  $('dv').innerHTML=tabs+quickBox(live.length,rows)+(TAB==='o'?ov+classNamesBox():TAB==='r'?rs:TAB==='f'?reviewBox()+backupBox()+stragglersBox()+auditBox():TAB==='c'?cl:TAB==='a'?an:'');
+  $('dv').innerHTML=tabs+quickBox(live.length,rows)+(TAB==='o'?ov+classNamesBox():TAB==='r'?rs:TAB==='f'?reviewBox()+exportBankBox()+backupBox()+stragglersBox()+auditBox():TAB==='c'?cl:TAB==='a'?an:'');
   document.querySelectorAll('.tb').forEach(b=>b.onclick=()=>{TAB=b.dataset.t;draw()});
   {const cns=$('cnS');if(cns)cns.onclick=async()=>{const m={...CN};document.querySelectorAll('.cnI').forEach(i=>{const v=i.value.trim();if(v)m[i.dataset.k]=v;else delete m[i.dataset.k]});cns.disabled=true;audit('تعديل أسماء الفصول','');cns.textContent='جارٍ الحفظ…';try{await db.doc('settings/classes').set({names:m});CN=m;draw()}catch(e){cns.disabled=false;cns.textContent='💾 حفظ الأسماء'}}}
   {const mg=$('mgB');if(mg)mg.onclick=async()=>{mg.disabled=true;mg.textContent='جارٍ النقل…';try{const C=50;for(let i=0;i<QBANK_Q.length;i+=C){const part=QBANK_Q.slice(i,i+C),items=[],a={};part.forEach((x,j)=>{const id='mq:'+(i+j);items.push({id,t:'q',q:x.q,o:x.o.slice(),cat:x.cat||'كمي'});a[id]=x.c});const ci=i/C;await db.doc('bank/mq_'+ci).set({items});await db.doc('keys/mq_'+ci).set({a})}audit('نقل بنك الكمي إلى Firestore',QBANK_Q.length+' سؤال');mg.textContent='✓ تم النقل، حدّث الصفحة';}catch(e){mg.disabled=false;mg.textContent='تعذر النقل، تأكد من نشر القواعد'}}}
+  {const eb=$('exB');if(eb)eb.onclick=()=>{const out=bank.map(x=>({id:x.id,t:x.t,q:x.q,o:x.o,cat:x.cat||'',c:K[x.id]!==undefined?K[x.id]:null,e:x.e||''}));downloadFile('bank-export.json',JSON.stringify(out,null,1),'application/json')}}
   {const bb=$('bkB');if(bb)bb.onclick=async()=>{bb.disabled=true;downloadFile('backup-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify({exportedAt:new Date().toISOString(),results:RES,classNames:CN,reportsOpen:REPORTS.length}),'application/json');try{await db.doc('settings/backup').set({ts:Date.now()});BK=Date.now();audit('نسخة احتياطية','');draw()}catch(e){bb.disabled=false}}}
   document.querySelectorAll('.rpd').forEach(b=>b.onclick=async()=>{if(!confirm('سيُحذف هذا البلاغ نهائياً. المتابعة؟'))return;b.disabled=true;audit('حل بلاغ',b.dataset.ids.split(',').length+' بلاغ');try{const ids=b.dataset.ids.split(',');for(let i=0;i<ids.length;i+=400){const bt=db.batch();ids.slice(i,i+400).forEach(id=>bt.delete(db.collection('reports').doc(id)));await bt.commit()}}catch(e){b.disabled=false}});
   {const stuRows=k=>rows.filter(r=>(r.uid||r.name)===k).sort((a,b)=>a.n-b.n),clsRows=k=>rows.filter(r=>gk(r)===k&&(!ATT||r.n===ATT));
