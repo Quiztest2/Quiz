@@ -23,8 +23,12 @@ function downloadFile(name,data,type='application/octet-stream'){const blob=data
 
 function loadXLSX(){if(window.XLSX)return Promise.resolve();if(window._xlsxP)return window._xlsxP;window._xlsxP=new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=res;s.onerror=()=>{window._xlsxP=null;rej(new Error('xlsx'))};document.head.appendChild(s)});return window._xlsxP}
 /* إعادة إرسال النتائج التي فشل حفظها سابقاً (مثلاً بسبب انقطاع الإنترنت) */
-function reportQ(q,src,btn){try{btn.disabled=true;btn.textContent='✓ شكراً لك، تم استلام البلاغ';const u=firebase.auth().currentUser;
-  db.collection('reports').add({q:String(q.q),o:(q.o||[]).map(String),c:q.c==null?(q.a==null?null:q.a):q.c,id:String(q.id||''),cat:String(q.cat||''),src,by:u?u.uid:'',ts:Date.now()}).catch(()=>{})}catch(e){}}
+const audit=(action,target)=>{try{const u=firebase.auth().currentUser;db.collection('audit').add({action,target:String(target||''),by:u?u.uid:'',ts:Date.now()}).catch(()=>{})}catch(e){}};
+const hid=s=>{let h=5381;for(const c of String(s))h=((h<<5)+h+c.charCodeAt(0))|0;return(h>>>0).toString(36)};
+/* بلاغ واحد لكل طالب لكل سؤال: المعرّف ثابت (السؤال + الطالب)، فإعادة الإرسال تحدّث نفس الوثيقة ولا تكرّرها */
+function reportQ(q,src,btn){const u=firebase.auth().currentUser;if(!db||!u)return;
+ btn.disabled=true;btn.textContent='✓ شكراً لك، تم استلام البلاغ';ls.set('rep:'+hid(q.q),'1');
+ db.collection('reports').doc(hid(q.q)+'_'+u.uid).set({q:String(q.q),o:(q.o||[]).map(String),c:q.c==null?(q.a==null?null:q.a):q.c,id:String(q.id||''),cat:String(q.cat||''),src,by:u.uid,ts:Date.now()}).catch(()=>{})}
 async function retryPending(){try{const p=JSON.parse(ls.get('bk')||'null');if(p&&uid&&p.uid===uid){await saveRec(p)}}catch(e){}}
 let _retryT=null;function queueRetry(){clearTimeout(_retryT);_retryT=setTimeout(async()=>{await retryPending();if(ls.get('bk'))queueRetry()},20000)}
 window.addEventListener('online',()=>{retryPending()});
@@ -194,7 +198,7 @@ function showQ(i){
  app.querySelectorAll('.op').forEach(b=>b.onclick=()=>{
   S.ans[S.si][S.qi]=+b.dataset.k;try{navigator.vibrate&&navigator.vibrate(12)}catch(e){}
   app.querySelectorAll('.op').forEach(x=>x.classList.toggle('s',x===b));$('nx').disabled=false});
- $('nx').onclick=nextQ;const rqb=app.querySelector('.rq');if(rqb)rqb.onclick=()=>reportQ(it,'exam',rqb);
+ $('nx').onclick=nextQ;const rqb=app.querySelector('.rq');if(rqb){if(ls.get('rep:'+hid(it.q))){rqb.disabled=true;rqb.textContent='✓ تم استلام بلاغك'}rqb.onclick=()=>reportQ(it,'exam',rqb)}
  clearInterval(tm);tm=setInterval(tick,200);tick();
 }
 function tick(){
@@ -299,9 +303,9 @@ async function adminGate(){
 /* ---------- لوحة المالك ---------- */
 async function dash(){loadXLSX().catch(()=>{});
  app.innerHTML='<div class="glass">جاري تحميل اللوحة…</div>';
- const K={};const [kSnap,d0]=await Promise.all([db.collection('keys').get().catch(()=>null),db.doc('leaderboard/top').get().catch(()=>null)]);if(kSnap)kSnap.docs.forEach(d=>Object.assign(K,d.data().a||{}));bank.forEach(x=>{if(String(x.id)[0]==='p')K[x.id]=0});
+ const K={};let BK=0;const [kSnap,d0,cDoc,bDoc]=await Promise.all([db.collection('keys').get().catch(()=>null),db.doc('leaderboard/top').get().catch(()=>null),db.doc('settings/classes').get().catch(()=>null),db.doc('settings/backup').get().catch(()=>null)]);let CN=cDoc&&cDoc.exists?(cDoc.data().names||{}):{};BK=bDoc&&bDoc.exists?(bDoc.data().ts||0):0;if(kSnap)kSnap.docs.forEach(d=>Object.assign(K,d.data().a||{}));bank.forEach(x=>{if(String(x.id)[0]==='p')K[x.id]=0});
  let TAB='o',RES=[],LIVE=[],CL=[],lastLB='',CLR=0,ATT=0,GR='',CF=0,AF='',LA=null,WN=30,SQ='';if(d0&&d0.exists)CLR=d0.data().clearedAt||0;const ok=a=>a.id[0]==='g'?gen(a.id).a===a.pick:K[a.id]===a.pick;
- let ROWS=[],REPORTS=[];
+ let ROWS=[],REPORTS=[],AUD=[];
  /* ===== تقارير PDF: تقرير فصل (مع بطاقة لكل طالب) + تقرير طالب ===== */
  const RGC=new Map(),qw=n=>n===1?'سؤالاً واحداً':n===2?'سؤالين':n<=10?n+' أسئلة':n+' سؤالاً',dr=n=>n===1?'درجة واحدة':n===2?'درجتين':n<=10?n+' درجات':n+' درجة',lvl=t=>t>=80?'ممتاز':t>=60?'جيد':t>=40?'متوسط':'ضعيف',best=L=>L.reduce((b,r)=>!b||r.tot>b.tot||(r.tot===b.tot&&r.secs<b.secs)?r:b,null);
  const skillStats=list=>{const bm=new Map(bank.map(x=>[x.id,x])),C={};let n=0,w=0,s=0,ms=0,mn=0;
@@ -380,7 +384,7 @@ async function dash(){loadXLSX().catch(()=>{});
    cn=[[80,100,'ممتاز'],[60,79,'جيد'],[40,59,'متوسط'],[0,39,'ضعيف']].map(x=>[x[2],S.filter(r=>r.tot>=x[0]&&r.tot<=x[1]).length]);
   const lowBox=N<2?'<div class="bx">يوجد طالب واحد فقط في هذا الفصل حتى الآن، فلا توجد مقارنة بين أعلى وأقل درجة.</div>':LO.slice(0,3).map(l=>stuCard(l,stuL(l),true)).join('');
   return `${rhead('تقرير فصل')}
-  <div class="bx"><b style="font-size:17px">${esc(g)} · فصل ${esc(c)}</b><div class="sm">${N} طالب · ${L.length} اختبار · الاعتماد على ${ATT?'المحاولة '+ATT:'أفضل محاولة لكل طالب'}</div></div>
+  <div class="bx"><b style="font-size:17px">${esc(clsLabel(g,c))}</b><div class="sm">${N} طالب · ${L.length} اختبار · الاعتماد على ${ATT?'المحاولة '+ATT:'أفضل محاولة لكل طالب'}</div></div>
   <div class="kp"><div><b>${avg(r=>r.tot)}</b><span>متوسط المجموع /${MAXS}</span></div><div><b>${avg(r=>r.q)}</b><span>متوسط الكمي /${SECMAX}</span></div><div><b>${avg(r=>r.v)}</b><span>متوسط اللفظي /${SECMAX}</span></div><div><b>${hiT}</b><span>أعلى درجة</span></div><div><b>${loT}</b><span>أقل درجة</span></div></div>
   <h2>🥇 أعلى درجة</h2>${HI.slice(0,3).map(r=>stuCard(r,stuL(r))).join('')}
   <h2>⚠️ أقل درجة وسبب الضعف</h2>${lowBox}
@@ -424,12 +428,12 @@ async function dash(){loadXLSX().catch(()=>{});
   const classRows=[...G.entries()].sort((a,b)=>gsort(a[1][0],b[1][0])).map(([k,L])=>{
    const av=f=>(L.reduce((s,x)=>s+x[f],0)/L.length).toFixed(1),top=[...L].sort((a,b)=>b.tot-a.tot)[0];
    const pl=prev.filter(x=>gk(x)===k),pa=avgT(pl),ca=avgT(L);
-   return `<tr><td>${esc(L[0].grade||'-')}</td><td>${esc(L[0].cls||'-')}</td><td>${L.length}</td><td>${av('q')}</td><td>${av('v')}</td><td><b>${av('tot')}</b></td><td>${pa==null?'—':pa.toFixed(1)}</td><td><b>${fmtD(ca,pa)}</b></td><td class="n">${esc(top.name)} (${top.tot})</td></tr>`}).join('');
+   return `<tr><td>${esc(clsLabel(L[0].grade,L[0].cls))}</td><td>${L.length}</td><td>${av('q')}</td><td>${av('v')}</td><td><b>${av('tot')}</b></td><td>${pa==null?'—':pa.toFixed(1)}</td><td><b>${fmtD(ca,pa)}</b></td><td class="n">${esc(top.name)} (${top.tot})</td></tr>`}).join('');
   const bestRows=best.map((r,i)=>`<tr><td>${i+1}</td><td class="n">${esc(r.name)}</td><td>${esc(r.grade||'-')} · ${esc(r.cls||'-')}</td><td><b>${r.tot}</b></td></tr>`).join('');
   const weakHtml=weak.length?weak.map(z=>`<div class="lv"><span>${esc(z.c)}</span><span class="mu">أخطأ فيه ${Math.round(z.e*100)}٪ من ${z.n} إجابة</span></div>`).join(''):'<div class="mu">لا توجد بيانات كافية للمهارات هذا الأسبوع.</div>';
   const html=`<h1>التقرير الأسبوعي</h1><div class="mu">من ${from} إلى ${to} · منصة عيون للقدرات</div>
    <div class="kp"><div><span class="mu">عدد الاختبارات</span><b>${rows.length}</b></div><div><span class="mu">عدد الطلاب</span><b>${stuSet.size}</b></div><div><span class="mu">متوسط المجموع</span><b>${avgAll}/${MAXS}</b></div><div><span class="mu">مقارنة بالأسبوع السابق</span><b>${fmtD(+avgAll,avgT(prev))}</b></div></div>
-   <h2>أداء الفصول</h2><table><tr><th>الصف</th><th>الفصل</th><th>الاختبارات</th><th>متوسط الكمي</th><th>متوسط اللفظي</th><th>متوسط المجموع</th><th>الأسبوع السابق</th><th>التغيّر</th><th>الأعلى</th></tr>${classRows}</table>
+   <h2>أداء الفصول</h2><table><tr><th>الفصل</th><th>الاختبارات</th><th>متوسط الكمي</th><th>متوسط اللفظي</th><th>متوسط المجموع</th><th>الأسبوع السابق</th><th>التغيّر</th><th>الأعلى</th></tr>${classRows}</table>
    <h2>أكثر المهارات التي يحتاج الطلاب تطويرها</h2>${weakHtml}
    <h2>أفضل 10 نتائج</h2><table><tr><th>م</th><th>الاسم</th><th>الصف · الفصل</th><th>المجموع</th></tr>${bestRows}</table>`;
   await makePdf(html,'weekly-report-'+new Date(WKs).toISOString().slice(0,10)+'.pdf',btn);
@@ -445,8 +449,8 @@ async function dash(){loadXLSX().catch(()=>{});
  };
  const reviewBox=()=>{
   const cut2=s=>String(s).slice(0,90);
-  const groups=new Map();REPORTS.forEach(r=>{const k=r.q;if(!groups.has(k))groups.set(k,{q:r.q,ids:[],c:r.c,o:r.o||[],id:r.id});groups.get(k).ids.push(r.id)});
-  const gl=[...groups.values()].sort((a,b)=>b.ids.length-a.ids.length).slice(0,15);
+  const groups=new Map();REPORTS.forEach(r=>{const k=r.q;if(!groups.has(k))groups.set(k,{q:r.q,ids:[],by:new Set(),c:r.c,o:r.o||[],id:r.id});const g=groups.get(k);g.ids.push(r.id);g.by.add(r.by)});
+  const gl=[...groups.values()].sort((a,b)=>b.by.size-a.by.size).slice(0,15);
   const bq=new Map();bank.forEach(x=>bq.set(x.id,x));
   const st=new Map();
   ROWS.forEach(r=>(r.answers||[]).forEach(a=>{
@@ -460,35 +464,45 @@ async function dash(){loadXLSX().catch(()=>{});
    if(z.w>=5&&Math.max(...Object.values(z.p))/z.w>=.7)f.push('الأخطاء متجمعة على خيار واحد، راجع المفتاح');
    if(z.mn>=5&&z.ms/z.mn<4000)f.push('الإجابات سريعة جداً، احتمال تسريب للسؤال');
    if(f.length){const b=bq.get(id)||{};const kidx=K[id];flagged.push({id,q:b.q||id,f,ans:b.o&&kidx!=null?b.o[kidx]:''})}});
-  const rowsG=gl.map(g=>`<div class="rc"><div class="rn"><b>${esc(cut2(g.q))}</b><span class="mu">${g.ids.length} بلاغ</span></div>
+  const rowsG=gl.map(g=>`<div class="rc"><div class="rn"><b>${esc(cut2(g.q))}</b><span class="mu">${g.by.size} طالب</span></div>
    ${g.o.length?`<div class="mu">الخيارات: ${g.o.map((x,i)=>'«'+i+'» '+esc(cut2(x))).join(' · ')}</div>`:''}
    <button class="g rpd" data-ids="${g.ids.join(',')}" style="margin-top:6px">✓ تم حل البلاغ</button></div>`).join('');
   const rowsF=flagged.slice(0,15).map(x=>`<div class="rc"><div class="rn"><b>${esc(cut2(x.q))}</b></div>
    ${x.ans?`<div class="mu">الإجابة في المفتاح: ${esc(cut2(x.ans))}</div>`:''}
    <div style="color:var(--er);font-weight:700">${x.f.map(esc).join('<br>')}</div></div>`).join('');
-  return `<div class="glass" style="margin-bottom:12px"><h2>🚩 بلاغات الطلاب (${REPORTS.length})</h2>${gl.length?rowsG:'<div class="mu">لا توجد بلاغات 🎉</div>'}</div>
+  return `<div class="glass" style="margin-bottom:12px"><h2>🚩 بلاغات الطلاب (${new Set(REPORTS.map(r=>r.q)).size} سؤال)</h2>${gl.length?rowsG:'<div class="mu">لا توجد بلاغات 🎉</div>'}</div>
   <div class="glass" style="margin-bottom:12px"><h2>🔎 أسئلة تحتاج مراجعة</h2>${flagged.length?rowsF:'<div class="mu">لا توجد أسئلة مشكوك فيها حالياً</div>'}</div>`;
  };
  const stragglersBox=()=>{
   const by=new Map();ROWS.forEach(r=>{const k=r.uid||r.name;if(!by.has(k))by.set(k,[]);by.get(k).push(r)});
   const now=Date.now(),out=[];
-  by.forEach(L=>{L.sort((a,b)=>a.ts-b.ts);const last=L[L.length-1],meta=(last.grade||'-')+' · فصل '+(last.cls||'-'),days=Math.floor((now-last.ts)/864e5);
+  by.forEach(L=>{L.sort((a,b)=>a.ts-b.ts);const last=L[L.length-1],meta=clsLabel(last.grade,last.cls),days=Math.floor((now-last.ts)/864e5);
    if(days>=14){out.push({name:last.name,meta,why:'آخر اختبار قبل '+days+' يوم'});return}
    if(L.length>=2){const prev=L.slice(0,-1),pa=prev.reduce((s,x)=>s+x.tot,0)/prev.length;if(last.tot<=pa-10)out.push({name:last.name,meta,why:'نتيجته الأخيرة '+last.tot+'، بعد متوسط سابق '+pa.toFixed(0)})}});
   return `<div class="glass" style="margin-bottom:12px"><h2>⚠️ طلاب يحتاجون متابعة</h2>${out.length?out.slice(0,20).map(x=>`<div class="rc"><div class="rn"><b>${esc(x.name)}</b><span class="mu">${esc(x.meta)}</span></div><div class="mu">${esc(x.why)}</div></div>`).join(''):'<div class="mu">لا يوجد طلاب يحتاجون متابعة الآن 🎉</div>'}</div>`;
  };
- const quickBox=(live,rows)=>{const t0=new Date().setHours(0,0,0,0),today=rows.filter(r=>r.ts>=t0).length;
-  return `<div class="kp k3" style="margin-bottom:12px"><div><span class="mu">يختبرون الآن</span><b>${live}</b></div><div><span class="mu">اختبارات اليوم</span><b>${today}</b></div><div><span class="mu">بلاغات مفتوحة</span><b>${REPORTS.length}</b></div></div>`};
+ const quickBox=(live,rows)=>{const warn=Date.now()-BK>6048e5?'<div class="glass" style="margin-bottom:12px;color:var(--er)">⚠️ لم تُحفظ نسخة احتياطية منذ أكثر من أسبوع، احفظها من تبويب المتابعة.</div>':'';const t0=new Date().setHours(0,0,0,0),today=rows.filter(r=>r.ts>=t0).length;
+  return warn+`<div class="kp k3" style="margin-bottom:12px"><div><span class="mu">يختبرون الآن</span><b>${live}</b></div><div><span class="mu">اختبارات اليوم</span><b>${today}</b></div><div><span class="mu">أسئلة مبلّغ عنها</span><b>${new Set(REPORTS.map(r=>r.q)).size}</b></div></div>`};
+ const clsLabel=(g,c)=>{const n=CN[(g||'-')+'|'+(c||'-')];return(g||'-')+' · فصل '+(c||'-')+(n?' ('+n+')':'')};
+ const classNamesBox=()=>{const all=[];['أول ثانوي','ثاني ثانوي','ثالث ثانوي'].forEach(g=>[1,2,3,4,5].forEach(c=>all.push({grade:g,cls:c})));
+  return `<div class="glass" style="margin-top:12px"><h2>🏷️ أسماء الفصول</h2><div class="mu">اكتب اسماً مميزاً لكل فصل، ويظهر في لوحة المشرف والتقارير. اتركه فارغاً لإلغاء الاسم.</div>
+  ${all.map(x=>{const k=x.grade+'|'+x.cls;return `<div class="lv" style="gap:8px;align-items:center"><span class="mu" style="min-width:130px">${esc(x.grade)} · فصل ${x.cls}</span><input class="cnI" data-k="${esc(k)}" value="${esc(CN[k]||'')}" placeholder="مثال: فصل الأوائل" style="flex:1"></div>`}).join('')}
+  <button class="g" id="cnS" style="margin-top:10px;width:100%">💾 حفظ الأسماء</button></div>`};
+ const migrateBox=()=>{if(typeof QBANK_Q==='undefined'||!QBANK_Q.length)return '';const done=bank.some(x=>String(x.id).startsWith('mq:'));
+  return `<div class="glass" style="margin-bottom:12px"><h2>🔐 حماية بنك الكمي</h2><div class="mu">${done?'✓ البنك منقول إلى Firestore. احذف ملف practice-bank.js من المشروع ومن index.html حتى لا تبقى الإجابات مكشوفة في الملفات الثابتة.':'نقل '+QBANK_Q.length+' سؤالاً كمياً إلى Firestore مع مفاتيحها، فتختفي الإجابات من الملفات الثابتة.'}</div>${done?'':'<button class="g" id="mgB" style="margin-top:10px;width:100%">🔐 نقل البنك الآن</button>'}</div>`};
+ const backupBox=()=>{const days=BK?Math.floor((Date.now()-BK)/864e5):null;
+  return `<div class="glass" style="margin-bottom:12px"><h2>💾 النسخ الاحتياطي</h2><div class="mu">آخر نسخة: ${BK?new Date(BK).toLocaleString('ar-SA')+' (قبل '+days+' يوم)':'لم تُحفظ بعد'}</div><button class="g" id="bkB" style="margin-top:10px;width:100%">⬇️ تنزيل نسخة الآن (JSON)</button></div>`};
+ const auditBox=()=>`<div class="glass"><h2>🧾 سجل التعديلات</h2>${AUD.length?AUD.map(x=>`<div class="lv"><span>${esc(x.action)} <span class="mu">${esc(x.target||'')}</span></span><span class="mu" dir="ltr">${new Date(x.ts).toLocaleString('ar-SA')}</span></div>`).join(''):'<div class="mu">لا توجد تعديلات مسجّلة بعد</div>'}</div>`;
  const draw0=()=>{
   const rows=RES.map(r=>{let q=0,v=0;(r.answers||[]).forEach(a=>{if(ok(a))a.t==='q'?q++:v++});return{...r,q:q*PT,v:v*PT,tot:(q+v)*PT}}).sort((a,b)=>b.ts-a.ts);
   {const cnt={};[...rows].sort((a,b)=>a.ts-b.ts).forEach(r=>{const k=r.uid||r.name;cnt[k]=(cnt[k]||0)+1;r.n=cnt[k]})}
   pubLB(rows);ROWS=rows;
   const GO=['أول ثانوي','ثاني ثانوي','ثالث ثانوي'],gk=r=>(r.grade||'-')+'|'+(r.cls||'-'),gsort=(x,y)=>{const i=GO.indexOf(x.grade),j=GO.indexOf(y.grade);return(i<0?9:i)-(j<0?9:j)||(x.cls||0)-(y.cls||0)};
   const shown=(ATT?rows.filter(r=>r.n===ATT):rows).filter(r=>(!GR||r.grade===GR)&&(!CF||+r.cls===CF)&&(!SQ||norm(r.name).includes(norm(SQ)))).sort(gsort);
-  const hdr=r=>{const L=shown.filter(x=>gk(x)===gk(r)),av=(L.reduce((s,x)=>s+x.tot,0)/L.length).toFixed(1);return `<div class="gh"><b>🏫 ${esc(r.grade||'-')} · فصل ${esc(r.cls||'-')}</b><span class="mu">${L.length} اختبار · المتوسط ${av}/${MAXS} · الأعلى ${Math.max(...L.map(x=>x.tot))}</span><button class="g xg" data-k="${esc(gk(r))}">⬇️ Excel</button><button class="g cpdf" data-k="${esc(gk(r))}">📄 تقرير الفصل PDF</button></div>`};
+  const hdr=r=>{const L=shown.filter(x=>gk(x)===gk(r)),av=(L.reduce((s,x)=>s+x.tot,0)/L.length).toFixed(1);return `<div class="gh"><b>🏫 ${esc(clsLabel(r.grade,r.cls))}</b><span class="mu">${L.length} اختبار · المتوسط ${av}/${MAXS} · الأعلى ${Math.max(...L.map(x=>x.tot))}</span><button class="g xg" data-k="${esc(gk(r))}">⬇️ Excel</button><button class="g cpdf" data-k="${esc(gk(r))}">📄 تقرير الفصل PDF</button></div>`};
   const n=rows.length,avg=f=>n?(rows.reduce((s,r)=>s+f(r),0)/n):0;
   const live=LIVE.filter(x=>!x.done&&Date.now()-x.ts<240000);
-  const T=[['o','📊 نظرة عامة'],['r','📋 النتائج ('+n+')'],['f','🚩 المتابعة ('+REPORTS.length+')'],['a','🔬 تحليل الأسئلة'],['c','🔒 المسجّلون ('+CL.length+')'],['q','📥 الأسئلة']];
+  const T=[['o','📊 نظرة عامة'],['r','📋 النتائج ('+n+')'],['f','🚩 المتابعة ('+new Set(REPORTS.map(r=>r.q)).size+')'],['a','🔬 تحليل الأسئلة'],['c','🔒 المسجّلون ('+CL.length+')'],['q','📥 الأسئلة']];
   const tabs=`<div class="tabs">${T.map(t=>`<button class="g pk tb${TAB===t[0]?' on':''}" data-t="${t[0]}">${t[1]}</button>`).join('')}<button class="g pk" id="wr">📅 التقرير الأسبوعي</button></div>`;
   const stu=new Map();rows.forEach(r=>{const k=r.uid||r.name,b=stu.get(k);if(!b||r.tot>b.tot)stu.set(k,r)});
   const cmap=new Map();rows.forEach(r=>{const k=gk(r);if(!cmap.has(k))cmap.set(k,[]);cmap.get(k).push(r)});
@@ -498,7 +512,7 @@ async function dash(){loadXLSX().catch(()=>{});
   const ov=`<div class="kp k3"><div><span class="mu">الاختبارات</span><b>${n}</b></div><div><span class="mu">الطلاب</span><b>${stu.size}</b></div><div><span class="mu">متوسط الدرجة</span><b>${avg(r=>r.tot).toFixed(1)}</b></div>
   <div><span class="mu">متوسط الكمي /${SECMAX}</span><b>${avg(r=>r.q).toFixed(1)}</b></div><div><span class="mu">متوسط اللفظي /${SECMAX}</span><b>${avg(r=>r.v).toFixed(1)}</b></div><div><span class="mu">متوسط الوقت</span><b>${Math.round(avg(r=>r.secs)/60)} د</b></div></div>
   <div class="glass" style="margin-top:14px"><h2><span class="dot"></span>مباشر الآن (${live.length})</h2>${live.length?live.map(x=>`<div class="lv"><span>${esc(x.name)}</span><span class="mu">${SEC[x.sec]?.n||''} · سؤال ${(x.q||0)+1}/${PER}</span></div>`).join(''):'<div class="mu">لا أحد يختبر الآن</div>'}</div>
-  <div class="glass"><h2>🏫 الفصول</h2>${CS.length?CS.map(L=>{const a=(L.reduce((t,x)=>t+x.tot,0)/L.length).toFixed(1);return `<div class="lv"><span><b>${esc(L[0].grade||'-')} · فصل ${esc(L[0].cls||'-')}</b></span><span class="mu">${L.length} اختبار · متوسط ${a}/${MAXS} · الأعلى ${Math.max(...L.map(x=>x.tot))}</span><button class="g cpdf" data-k="${esc(gk(L[0]))}">📄 PDF</button></div>`}).join(''):'<div class="mu">لا توجد نتائج بعد</div>'}</div>
+  <div class="glass"><h2>🏫 الفصول</h2>${CS.length?CS.map(L=>{const a=(L.reduce((t,x)=>t+x.tot,0)/L.length).toFixed(1);return `<div class="lv"><span><b>${esc(clsLabel(L[0].grade,L[0].cls))}</b></span><span class="mu">${L.length} اختبار · متوسط ${a}/${MAXS} · الأعلى ${Math.max(...L.map(x=>x.tot))}</span><button class="g cpdf" data-k="${esc(gk(L[0]))}">📄 PDF</button></div>`}).join(''):'<div class="mu">لا توجد نتائج بعد</div>'}</div>
   <div class="glass"><h2>📈 توزيع الدرجات</h2>${bk.map(x=>`<div class="dr"><span class="mu" dir="ltr">${x[0][0]}–${x[0][1]}</span><div class="bar2"><i style="width:${Math.round(x[1]/mxb*100)}%"></i></div><b>${x[1]}</b></div>`).join('')}</div>
   <div class="glass"><h2>🥇 أعلى الطلاب</h2>${top5.length?top5.map((r,i)=>`<div class="lv"><span>${['🥇','🥈','🥉'][i]||(i+1)+'.'} ${esc(r.name)} <small class="mu">${esc(r.grade||'')} · فصل ${esc(r.cls||'')}</small></span><b style="color:var(--a1)">${r.tot}/${MAXS}</b></div>`).join(''):'<div class="mu">لا توجد نتائج بعد</div>'}</div>
   <details class="glass"><summary>⚙️ إجراءات متقدمة</summary><div class="mu" style="margin:8px 0">أسئلة مرفوعة في البنك: ${bank.filter(x=>String(x.id)[0]!=='p').length}</div><button class="g" id="clb" style="width:100%;color:var(--er)">🗑️ مسح كل من في لوحة الشرف</button>
@@ -572,22 +586,25 @@ async function dash(){loadXLSX().catch(()=>{});
    <div class="glass"><h2>🧭 المهارات (الأضعف أولاً)</h2>${cats.map(row).join('')}</div>
    <div class="glass"><h2>🎯 القوالب والأسئلة المرفوعة (تجميع)</h2>${qs.slice(0,25).map(row).join('')}${qs.length>25?`<div class="mu">عُرض أعلى ٢٥ من ${qs.length}. صدّر Excel لرؤية الكل.</div>`:''}</div>`};
   const an=TAB==='a'?analysis():'';
-  $('dv').innerHTML=tabs+quickBox(live.length,rows)+(TAB==='o'?ov:TAB==='r'?rs:TAB==='f'?reviewBox()+stragglersBox():TAB==='c'?cl:TAB==='a'?an:'');
+  $('dv').innerHTML=tabs+quickBox(live.length,rows)+(TAB==='o'?ov+classNamesBox():TAB==='r'?rs:TAB==='f'?reviewBox()+migrateBox()+backupBox()+stragglersBox()+auditBox():TAB==='c'?cl:TAB==='a'?an:'');
   document.querySelectorAll('.tb').forEach(b=>b.onclick=()=>{TAB=b.dataset.t;draw()});
-  document.querySelectorAll('.rpd').forEach(b=>b.onclick=async()=>{if(!confirm('سيُحذف هذا البلاغ نهائياً. المتابعة؟'))return;b.disabled=true;try{const ids=b.dataset.ids.split(',');for(let i=0;i<ids.length;i+=400){const bt=db.batch();ids.slice(i,i+400).forEach(id=>bt.delete(db.collection('reports').doc(id)));await bt.commit()}}catch(e){b.disabled=false}});
+  {const cns=$('cnS');if(cns)cns.onclick=async()=>{const m={...CN};document.querySelectorAll('.cnI').forEach(i=>{const v=i.value.trim();if(v)m[i.dataset.k]=v;else delete m[i.dataset.k]});cns.disabled=true;audit('تعديل أسماء الفصول','');cns.textContent='جارٍ الحفظ…';try{await db.doc('settings/classes').set({names:m});CN=m;draw()}catch(e){cns.disabled=false;cns.textContent='💾 حفظ الأسماء'}}}
+  {const mg=$('mgB');if(mg)mg.onclick=async()=>{mg.disabled=true;mg.textContent='جارٍ النقل…';try{const C=50;for(let i=0;i<QBANK_Q.length;i+=C){const part=QBANK_Q.slice(i,i+C),items=[],a={};part.forEach((x,j)=>{const id='mq:'+(i+j);items.push({id,t:'q',q:x.q,o:x.o.slice(),cat:x.cat||'كمي'});a[id]=x.c});const ci=i/C;await db.doc('bank/mq_'+ci).set({items});await db.doc('keys/mq_'+ci).set({a})}audit('نقل بنك الكمي إلى Firestore',QBANK_Q.length+' سؤال');mg.textContent='✓ تم النقل، حدّث الصفحة';}catch(e){mg.disabled=false;mg.textContent='تعذر النقل، تأكد من نشر القواعد'}}}
+  {const bb=$('bkB');if(bb)bb.onclick=async()=>{bb.disabled=true;downloadFile('backup-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify({exportedAt:new Date().toISOString(),results:RES,classNames:CN,reportsOpen:REPORTS.length}),'application/json');try{await db.doc('settings/backup').set({ts:Date.now()});BK=Date.now();audit('نسخة احتياطية','');draw()}catch(e){bb.disabled=false}}}
+  document.querySelectorAll('.rpd').forEach(b=>b.onclick=async()=>{if(!confirm('سيُحذف هذا البلاغ نهائياً. المتابعة؟'))return;b.disabled=true;audit('حل بلاغ',b.dataset.ids.split(',').length+' بلاغ');try{const ids=b.dataset.ids.split(',');for(let i=0;i<ids.length;i+=400){const bt=db.batch();ids.slice(i,i+400).forEach(id=>bt.delete(db.collection('reports').doc(id)));await bt.commit()}}catch(e){b.disabled=false}});
   {const stuRows=k=>rows.filter(r=>(r.uid||r.name)===k).sort((a,b)=>a.n-b.n),clsRows=k=>rows.filter(r=>gk(r)===k&&(!ATT||r.n===ATT));
    document.querySelectorAll('.cpdf').forEach(b=>b.onclick=()=>{const k=b.dataset.k,L=clsRows(k);if(!L.length){alert('لا توجد نتائج لهذا الفصل في المحاولة المحددة');return}makePdf(classPage(k,L),'class-report-'+k.replace(/[| ]/g,'-')+'.pdf',b)});
    document.querySelectorAll('.spdf').forEach(b=>b.onclick=()=>{const L=stuRows(b.dataset.u);if(!L.length)return;makePdf(studentPage(L),'student-report-'+String(L[0].name).trim().replace(/\s+/g,'-')+'.pdf',b)});
    const cpa=$('cpall');if(cpa)cpa.onclick=()=>{const parts=CS.map(L=>gk(L[0])).map(k=>[k,clsRows(k)]).filter(x=>x[1].length).map((x,i)=>`<div class="${i?'pg':''}">${classPage(x[0],x[1])}</div>`);if(!parts.length){alert('لا توجد نتائج');return}makePdf(parts.join(''),'class-reports-all.pdf',cpa)}}
   {const wr=$('wr');if(wr)wr.onclick=()=>weeklyReport(wr)}
   {const sq=$('sq');if(sq)sq.oninput=()=>{SQ=sq.value;draw();const z=$('sq');if(z){z.focus();try{z.setSelectionRange(SQ.length,SQ.length)}catch(e){}}};const rf=$('rf');if(rf)rf.onclick=()=>{GR='';CF=0;ATT=0;SQ='';draw()}}
-  if($('clb'))$('clb').onclick=async()=>{if(!confirm('سيُمسح كل من في لوحة الشرف الآن، وتبقى النتائج محفوظة في المالك. المتابعة؟'))return;CLR=Date.now();lastLB='';try{await db.doc('leaderboard/top').set({items:[],ts:CLR,clearedAt:CLR,wk:weekStart()});$('clb').textContent='✓ تم مسح لوحة الشرف'}catch(e){$('clb').textContent='تعذر المسح، تأكد من نشر القواعد'}};
-  const dbk=$('dbk');if(dbk)dbk.onclick=async()=>{if(!confirm('سيُحذف كل أسئلة البنك ومفاتيح إجاباتها نهائياً ('+bank.length+' سؤال). النتائج المحفوظة تبقى. المتابعة؟'))return;dbk.disabled=true;dbk.textContent='جارٍ الحذف…';
+  if($('clb'))$('clb').onclick=async()=>{if(!confirm('سيُمسح كل من في لوحة الشرف الآن، وتبقى النتائج محفوظة في المالك. المتابعة؟'))return;CLR=Date.now();lastLB='';audit('مسح لوحة الشرف','');try{await db.doc('leaderboard/top').set({items:[],ts:CLR,clearedAt:CLR,wk:weekStart()});$('clb').textContent='✓ تم مسح لوحة الشرف'}catch(e){$('clb').textContent='تعذر المسح، تأكد من نشر القواعد'}};
+  const dbk=$('dbk');if(dbk)dbk.onclick=async()=>{if(!confirm('سيُحذف كل أسئلة البنك ومفاتيح إجاباتها نهائياً ('+bank.length+' سؤال). النتائج المحفوظة تبقى. المتابعة؟'))return;dbk.disabled=true;audit('حذف بنك الأسئلة',bank.length+' سؤال');dbk.textContent='جارٍ الحذف…';
    try{for(const col of ['bank','keys']){const sn=await db.collection(col).get();for(let i=0;i<sn.docs.length;i+=400){const bt=db.batch();sn.docs.slice(i,i+400).forEach(d=>bt.delete(d.ref));await bt.commit()}}
     bank=[];Object.keys(K).forEach(k=>delete K[k]);dbk.textContent='✓ تم حذف كل الأسئلة';draw()}catch(e){dbk.disabled=false;dbk.textContent='تعذر الحذف، تأكد من نشر القواعد'}};
   $('qs').style.display=TAB==='q'?'':'none';
-  document.querySelectorAll('.dl').forEach(b=>b.onclick=async()=>{if(!confirm('حذف «'+b.dataset.n+'» وكل اختباراته ومحاولاته نهائياً من لوحة المالك ولوحة الشرف؟ لا يمكن التراجع.'))return;b.disabled=true;const u=b.dataset.u;try{await db.doc('results/'+u).delete()}catch(e){b.disabled=false;alert('تعذر الحذف، تأكد من نشر قواعد Firestore');return}try{await db.doc('claims/'+u).delete()}catch(e){}try{await db.doc('live/'+u).delete()}catch(e){}});
-  document.querySelectorAll('.ul').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await db.doc('claims/'+b.dataset.id).delete()}catch(e){b.disabled=false}});
+  document.querySelectorAll('.dl').forEach(b=>b.onclick=async()=>{if(!confirm('حذف «'+b.dataset.n+'» وكل اختباراته ومحاولاته نهائياً من لوحة المالك ولوحة الشرف؟ لا يمكن التراجع.'))return;b.disabled=true;const u=b.dataset.u;audit('حذف طالب',b.dataset.n);try{await db.doc('results/'+u).delete()}catch(e){b.disabled=false;alert('تعذر الحذف، تأكد من نشر قواعد Firestore');return}try{await db.doc('claims/'+u).delete()}catch(e){}try{await db.doc('live/'+u).delete()}catch(e){}});
+  document.querySelectorAll('.ul').forEach(b=>b.onclick=async()=>{b.disabled=true;audit('فك قفل محاولات',b.dataset.id);try{await db.doc('claims/'+b.dataset.id).delete()}catch(e){b.disabled=false}});
   const xl=(list,fn)=>{if(!window.XLSX)return;
    const L=[...list].sort((a,b)=>String(a.grade||'').localeCompare(String(b.grade||''),'ar')||(a.cls||0)-(b.cls||0)||String(a.name).localeCompare(String(b.name),'ar'));
    const ws=XLSX.utils.aoa_to_sheet([['الاسم','الصف','الفصل','المحاولة','الكمي (من '+SECMAX+')','اللفظي (من '+SECMAX+')','المجموع (من '+MAXS+')'],...L.map(r=>[String(r.name),r.grade||'',r.cls||'',r.n,r.q,r.v,r.tot])]);
@@ -631,13 +648,14 @@ async function dash(){loadXLSX().catch(()=>{});
   for(const t of ['q','v']){const a=list.filter(x=>x.t===t);
    for(let i=0;i*50<a.length;i++){const ch=a.slice(i*50,i*50+50),key={};
     const items=ch.map((x,k)=>{const qid=t+id+'_'+i+'_'+k;key[qid]=+x.a;return{id:qid,t,q:String(x.q),o:x.o.map(String)}});
-    await db.doc('bank/'+t+id+'_'+i).set({items});await db.doc('keys/'+t+id+'_'+i).set({a:key});Object.assign(K,key);c+=ch.length}}
+    audit('رفع أسئلة',t+id);await db.doc('bank/'+t+id+'_'+i).set({items});await db.doc('keys/'+t+id+'_'+i).set({a:key});Object.assign(K,key);c+=ch.length}}
   await loadBank();$('am').textContent='تمت إضافة '+c+' سؤال';draw();
  }catch(e){$('am').textContent='خطأ في الصيغة'}};
  let _ds=null;const drawSoon=()=>{clearTimeout(_ds);_ds=setTimeout(draw,150)};
 subs.push(db.collection('results').onSnapshot(s=>{RES=s.docs.flatMap(d=>d.data().attempts||[]);drawSoon()},()=>{}));
  subs.push(db.collection('live').onSnapshot(s=>{LIVE=s.docs.map(d=>d.data());if(TAB==='o')drawSoon()},()=>{}));
- subs.push(db.collection('reports').onSnapshot(s=>{REPORTS=s.docs.map(d=>({id:d.id,...d.data()}));drawSoon()},()=>{}));
+ subs.push(db.collection('audit').orderBy('ts','desc').limit(30).onSnapshot(s=>{AUD=s.docs.map(d=>d.data());if(TAB==='f')drawSoon()},()=>{}));
+subs.push(db.collection('reports').onSnapshot(s=>{REPORTS=s.docs.map(d=>({id:d.id,...d.data()}));drawSoon()},()=>{}));
 subs.push(db.collection('claims').onSnapshot(s=>{CL=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>b.ts-a.ts);if(TAB==='c')drawSoon()},()=>{}));
  {const iv=setInterval(()=>{if($('dv')&&TAB==='o')draw()},30000);subs.push(()=>clearInterval(iv))}
 }

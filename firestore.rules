@@ -59,11 +59,23 @@ service cloud.firestore {
         && request.resource.data.xp is number && request.resource.data.xp < 1000000;
       allow delete: if isAdmin();
     }
+    match /data/users/{uid}/srs {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
     match /data/users/{uid}/used {
       allow read, write: if signedIn() && request.auth.uid == uid || isAdmin();
     }
+    match /settings/{id} {
+      allow read, write: if isAdmin();
+    }
+    match /audit/{id} {
+      allow create: if isAdmin() && request.resource.data.by == request.auth.uid;
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
     match /reports/{id} {
-      allow create: if signedIn() && request.resource.data.q is string && request.resource.data.q.size() <= 1500 && request.resource.data.ts is number;
+      allow create, update: if signedIn() && request.resource.data.by == request.auth.uid
+        && request.resource.data.q is string && request.resource.data.q.size() <= 1500 && request.resource.data.ts is number;
       allow read, delete: if isAdmin();
     }
     match /{document=**} { allow read, write: if false; }

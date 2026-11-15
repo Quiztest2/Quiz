@@ -119,15 +119,16 @@ const pMix=q=>{const o=_sh(q.o.map((t,k)=>[t,k]));return{q:q.q,e:q.e,cat:q.cat,g
 const SRS={
  k:'qsrs',
  all(){try{return JSON.parse(localStorage.getItem(this.k)||'[]')}catch(e){return[]}},
- put(a){try{localStorage.setItem(this.k,JSON.stringify(a))}catch(e){}},
+ put(a){a=a.slice(-400);try{localStorage.setItem(this.k,JSON.stringify(a))}catch(e){}if(typeof db!=='undefined'&&db&&typeof uid!=='undefined'&&uid)db.doc('data/users/'+uid+'/srs').set({items:a}).catch(()=>{})},
+ sync(){if(typeof db==='undefined'||!db||typeof uid==='undefined'||!uid)return Promise.resolve();return db.doc('data/users/'+uid+'/srs').get().then(d=>{if(!d.exists)return;const m=new Map();[...this.all(),...(d.data().items||[])].forEach(x=>{const o=m.get(x.q);if(!o||(x.ts||0)>(o.ts||0))m.set(x.q,x)});try{localStorage.setItem(this.k,JSON.stringify([...m.values()].slice(-400)))}catch(e){}}).catch(()=>{})},
  day(){return Math.floor(Date.now()/864e5)},
  due(){const d=this.day();return this.all().filter(x=>x.due<=d)},
  hit(q,ok){if(q.g)return;const a=this.all(),x=a.find(z=>z.q===q.q);
-  if(!ok){if(x){x.int=1;x.due=this.day()+1}else a.push({q:q.q,o:q.o.slice(),c:q.c,e:q.e||'',cat:q.cat||'',int:1,due:this.day()+1})}
+  if(!ok){if(x){x.int=1;x.due=this.day()+1}else a.push({q:q.q,o:q.o.slice(),c:q.c,e:q.e||'',cat:q.cat||'',int:1,due:this.day()+1,ts:Date.now()})}
   else if(x){x.int*=2;if(x.int>=32)a.splice(a.indexOf(x),1);else x.due=this.day()+x.int}
-  this.put(a)}
+  if(x)x.ts=Date.now();this.put(a)}
 };
-function practiceHome(){
+function practiceHome(){const _b=SRS.due().length;SRS.sync().then(()=>{if($('pb')&&SRS.due().length!==_b)practiceHome()});
  S=null;clearInterval(tm);
  const d=Prog.get();
  const tile=k=>{const v=d.ans[k]||[0,0],p=v[1]?Math.round(v[0]/v[1]*100):null;
@@ -186,7 +187,7 @@ function practiceRun(src,name,opt){
    if(done)return;done=true;clearInterval(tm);const ok=k===q.c;if(ok)sc++;else wrong.push(q);SRS.hit(q,ok);Prog.record(q.cat||name,ok,{k:q.g?'g':qh(q.q),t:Math.round((Date.now()-t0)/1000),q:(!ok&&!q.g)?q.q.slice(0,50):'',x:(!ok&&!q.g&&k>=0)?q.o[k].slice(0,40):''});
    app.querySelectorAll('.op').forEach((x,j)=>{x.disabled=true;if(j===q.c)x.classList.add('ok');else if(j===k)x.classList.add('no')});
    $('fb').innerHTML=`<div class="ex"><b>${ok?'✅ إجابة صحيحة':(k<0?'⏰ انتهى الوقت · ':'❌ ')+'الإجابة الصحيحة: '+esc(q.o[q.c])}</b><div class="mu">💡 ${esc(q.e||'')}</div>${ok||!LES[q.cat||name]?'':'<div class="mu tip2">🧭 القاعدة: '+esc(LES[q.cat||name]).replace(/\n/g,'<br>')+'</div>'}</div><button class="btn" id="nx" style="margin-top:12px">${i+1<qs.length?'السؤال التالي':'عرض النتيجة'}</button>`;
-   $('fb').insertAdjacentHTML('beforeend','<button class="g rq" style="margin-top:8px;width:100%">⚠️ أبلغ عن خطأ في السؤال</button>');const rqb=$('fb').querySelector('.rq');rqb.onclick=()=>reportQ(q,'practice',rqb);
+   $('fb').insertAdjacentHTML('beforeend','<button class="g rq" style="margin-top:8px;width:100%">⚠️ أبلغ عن خطأ في السؤال</button>');const rqb=$('fb').querySelector('.rq');if(ls.get('rep:'+hid(q.q))){rqb.disabled=true;rqb.textContent='✓ تم استلام بلاغك'}rqb.onclick=()=>reportQ(q,'practice',rqb);
     $('nx').onclick=()=>{i++;i<qs.length?show():end()};$('nx').focus()};
   app.querySelectorAll('.op').forEach(b=>b.onclick=()=>reveal(+b.dataset.k));
   if(opt.timed)tm=setInterval(()=>{t--;const c=$('ck');if(c){c.textContent='⏱ '+_fa(t);c.classList.toggle('lo',t<=10)}if(t<=0)reveal(-1)},1000);

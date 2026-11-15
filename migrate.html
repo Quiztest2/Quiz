@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>نقل بنك الكمي إلى Firestore (أداة لمرة واحدة)</title>
+<style>
+body{font-family:system-ui,Tahoma,sans-serif;background:#111;color:#f5efe0;padding:24px;max-width:560px;margin:auto;line-height:1.8}
+input,button{font:inherit;padding:10px;border-radius:8px;border:1px solid #555;width:100%;margin:6px 0;box-sizing:border-box}
+button{background:#f2c85b;color:#1b1304;font-weight:700;border:0;cursor:pointer}
+button:disabled{opacity:.5}
+#log{background:#000;border-radius:8px;padding:12px;min-height:80px;white-space:pre-wrap;direction:ltr;text-align:left;font-size:13px}
+.warn{color:#f08c5a}
+</style>
+<script src="https://www.gstatic.com/firebasejs/13.1.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/13.1.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyB-yHoR0QuskyY-Y5sNmqIFqOzS3hVD3XU",
+  authDomain: "quiztest-e780c.firebaseapp.com",
+  projectId: "quiztest-e780c",
+  storageBucket: "quiztest-e780c.firebasestorage.app",
+  messagingSenderId: "223107194276",
+  appId: "1:223107194276:web:e103cdd85930f6fa7cf531",
+  measurementId: "G-D23MNZLT7F"
+};
+firebase.initializeApp(firebaseConfig);
+</script>
+<script src="practice-bank.js"></script>
+</head>
+<body>
+<h2>🔐 نقل بنك الكمي إلى Firestore</h2>
+<p>أداة لمرة واحدة. سجّل دخول بحساب المشرف، ثم اضغط النقل. بعد النجاح احذف هذا الملف و practice-bank.js.</p>
+<div id="loginBox">
+  <input id="em" type="email" placeholder="بريد المشرف" dir="ltr">
+  <input id="pw" type="password" placeholder="كلمة المرور" dir="ltr">
+  <button id="lg">تسجيل الدخول</button>
+</div>
+<div id="migBox" style="display:none">
+  <p>عدد أسئلة الكمي: <b id="cnt"></b></p>
+  <button id="mg">🔐 نقل البنك الآن</button>
+</div>
+<div id="log">بانتظار تسجيل الدخول…</div>
+<script>
+const L=m=>{document.getElementById('log').textContent+='\n'+m};
+const db=firebase.firestore();
+document.getElementById('lg').onclick=async()=>{
+  const b=document.getElementById('lg');b.disabled=true;
+  try{
+    const c=await firebase.auth().signInWithEmailAndPassword(document.getElementById('em').value.trim(),document.getElementById('pw').value);
+    const r=await db.doc('admins/'+c.user.uid).get();
+    if(!r.exists||r.data().enabled!==true){await firebase.auth().signOut();throw new Error('هذا الحساب ليس مشرفاً (admins/UID مع enabled=true)')}
+    if(typeof QBANK_Q==='undefined'||!QBANK_Q.length)throw new Error('ملف practice-bank.js غير موجود بجانب هذه الصفحة');
+    document.getElementById('loginBox').style.display='none';
+    document.getElementById('cnt').textContent=QBANK_Q.length;
+    document.getElementById('migBox').style.display='';
+    L('✓ تم تسجيل دخول المشرف. جاهز للنقل.');
+  }catch(e){b.disabled=false;L('✗ '+(e.message||e.code))}
+};
+document.getElementById('mg').onclick=async()=>{
+  const b=document.getElementById('mg');b.disabled=true;
+  try{
+    const C=50;
+    for(let i=0;i<QBANK_Q.length;i+=C){
+      const part=QBANK_Q.slice(i,i+C),items=[],a={};
+      part.forEach((x,j)=>{const id='mq:'+(i+j);items.push({id,t:'q',q:x.q,o:x.o.slice(),cat:x.cat||'كمي'});a[id]=x.c});
+      const ci=i/C;
+      await db.doc('bank/mq_'+ci).set({items});
+      await db.doc('keys/mq_'+ci).set({a});
+      L('✓ دفعة '+(ci+1)+' ('+items.length+' سؤال)');
+    }
+    const u=firebase.auth().currentUser;
+    await db.collection('audit').add({action:'نقل بنك الكمي إلى Firestore',target:QBANK_Q.length+' سؤال',by:u.uid,ts:Date.now()});
+    L('\n✅ تم النقل بالكامل ('+QBANK_Q.length+' سؤال).\nالخطوة التالية: احذف migrate.html و practice-bank.js، ثم ارفع النسخة النهائية.');
+    b.textContent='✓ تم';
+  }catch(e){b.disabled=false;L('✗ توقف النقل: '+(e.message||e.code)+'\nإذا كان الخطأ permission-denied، تأكد من نشر firestore.rules أولاً.')}
+};
+</script>
+</body>
+</html>
