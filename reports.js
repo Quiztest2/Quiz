@@ -84,7 +84,7 @@ function makeFrame(){
   const f=document.createElement('iframe');
   f.setAttribute('aria-hidden','true');
   f.tabIndex=-1;
-  f.style.cssText='position:fixed;left:-12000px;top:0;width:'+W+'px;height:1200px;border:0;background:#fff';
+  f.style.cssText='position:fixed;left:0;top:0;width:'+W+'px;height:1200px;border:0;background:#fff;opacity:.01;pointer-events:none;z-index:2147483000';
   document.body.appendChild(f);
   const d=f.contentDocument;
   d.open();
@@ -158,16 +158,31 @@ function pack(items){
   return pages.map(p=>p.map(x=>x.html));
 }
 
+/* ---------- كشف الصفحة الفارغة: يفحص المساحة فوق التذييل فقط ---------- */
+function isBlank(cv){
+  const tw=120,th=Math.max(1,Math.round(cv.height*tw/cv.width));
+  const c=document.createElement('canvas');c.width=tw;c.height=th;
+  const g=c.getContext('2d');g.drawImage(cv,0,0,tw,th);
+  const cut=Math.max(1,Math.round(th*0.09));     /* تجاهل التذييل في أسفل الصفحة */
+  const d=g.getImageData(0,0,tw,th-cut).data;
+  for(let i=0;i<d.length;i+=4){if(d[i]<235||d[i+1]<235||d[i+2]<235)return false}
+  return true;
+}
+
 /* ---------- رسم الصفحات وتجميعها في PDF ---------- */
 async function render(f,pages,setT){
   const d=f.contentDocument,body=d.body;
   const pdf=new window.jspdf.jsPDF({unit:'mm',format:'a4',orientation:'portrait',compress:true});
-  let first=true;
+  let first=true,rendered=0;
   for(let p=0;p<pages.length;p++){
     setT('⏳ جارٍ رسم الصفحة '+(p+1)+' من '+pages.length+'…');
     body.innerHTML=pages[p].join('')+FOOTER;
-    await sleep(30);
-    const cv=await window.html2canvas(body,{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false,width:W,windowWidth:W});
+    await sleep(60);
+    const hgt=Math.max(1200,Math.ceil(body.scrollHeight)+60);
+    f.style.height=hgt+'px';
+    const cv=await window.html2canvas(body,{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false,width:W,height:hgt,windowWidth:W,windowHeight:hgt});
+    if(isBlank(cv))continue;          /* صفحة فارغة: لا تُضاف للملف */
+    rendered++;
     for(let y=0;y<cv.height;y+=MAXC){
       const sh=Math.min(MAXC,cv.height-y),c=document.createElement('canvas');
       c.width=cv.width;c.height=sh;
@@ -178,6 +193,7 @@ async function render(f,pages,setT){
       pdf.addImage(c.toDataURL('image/jpeg',0.92),'JPEG',10,10,190,mmH);
     }
   }
+  if(!rendered)throw new Error('كل الصفحات فارغة');
   /* ترقيم الصفحات: أرقام لاتينية لتجنّب مشاكل خطوط PDF الافتراضية */
   const n=pdf.internal.getNumberOfPages();
   pdf.setFontSize(8);pdf.setTextColor(120);
