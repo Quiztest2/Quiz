@@ -187,7 +187,7 @@ function practiceRun(src,name,opt){
    if(done)return;done=true;clearInterval(tm);const ok=k===q.c;if(ok)sc++;else wrong.push(q);SRS.hit(q,ok);Prog.record(q.cat||name,ok,{k:q.g?'g':qh(q.q),t:Math.round((Date.now()-t0)/1000),q:(!ok&&!q.g)?q.q.slice(0,50):'',x:(!ok&&!q.g&&k>=0)?q.o[k].slice(0,40):''});
    app.querySelectorAll('.op').forEach((x,j)=>{x.disabled=true;if(j===q.c)x.classList.add('ok');else if(j===k)x.classList.add('no')});
    $('fb').innerHTML=`<div class="ex"><b>${ok?'✅ إجابة صحيحة':(k<0?'⏰ انتهى الوقت · ':'❌ ')+'الإجابة الصحيحة: '+esc(q.o[q.c])}</b><div class="mu">💡 ${esc(q.e||'')}</div>${ok||!LES[q.cat||name]?'':'<div class="mu tip2">🧭 القاعدة: '+esc(LES[q.cat||name]).replace(/\n/g,'<br>')+'</div>'}</div><button class="btn" id="nx" style="margin-top:12px">${i+1<qs.length?'السؤال التالي':'عرض النتيجة'}</button>`;
-   $('fb').insertAdjacentHTML('beforeend','<button class="g rq" style="margin-top:8px;width:100%">⚠️ أبلغ عن خطأ في السؤال</button>');const rqb=$('fb').querySelector('.rq');if(ls.get('rep:'+hid(q.q))){rqb.disabled=true;rqb.textContent='✓ تم استلام بلاغك'}rqb.onclick=()=>reportQ(q,'practice',rqb);
+   $('fb').insertAdjacentHTML('beforeend','<button class="g rq" style="margin-top:8px;width:100%">⚠️ أبلغ عن خطأ في السؤال</button>');const rqb=$('fb').querySelector('.rq');if(ls.get('rep:'+hid(q.q))){rqb.disabled=true;rqb.textContent='✓ تم استلام بلاغك'}rqb.onclick=()=>pickReport(q,'practice',rqb);
     $('nx').onclick=()=>{i++;i<qs.length?show():end()};$('nx').focus()};
   app.querySelectorAll('.op').forEach(b=>b.onclick=()=>reveal(+b.dataset.k));
   if(opt.timed)tm=setInterval(()=>{t--;const c=$('ck');if(c){c.textContent='⏱ '+_fa(t);c.classList.toggle('lo',t<=10)}if(t<=0)reveal(-1)},1000);

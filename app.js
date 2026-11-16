@@ -26,9 +26,22 @@ function loadXLSX(){if(window.XLSX)return Promise.resolve();if(window._xlsxP)ret
 const audit=(action,target)=>{try{const u=firebase.auth().currentUser;db.collection('audit').add({action,target:String(target||''),by:u?u.uid:'',ts:Date.now()}).catch(()=>{})}catch(e){}};
 const hid=s=>{let h=5381;for(const c of String(s))h=((h<<5)+h+c.charCodeAt(0))|0;return(h>>>0).toString(36)};
 /* بلاغ واحد لكل طالب لكل سؤال: المعرّف ثابت (السؤال + الطالب)، فإعادة الإرسال تحدّث نفس الوثيقة ولا تكرّرها */
-function reportQ(q,src,btn){const u=firebase.auth().currentUser;if(!db||!u)return;
+/* أنواع البلاغ: المفتاح يُعرض للطالب كخيارات مرتبة */
+const RTYPES=[['ans','الإجابة الصحيحة في المفتاح خاطئة'],['multi','أكثر من إجابة صحيحة'],['unclear','صياغة السؤال غير واضحة'],['incomplete','السؤال ناقص أو فيه معلومة مفقودة'],['options','الخيارات متشابهة أو غير مناسبة'],['spell','خطأ إملائي أو لغوي'],['tech','مشكلة في عرض السؤال'],['other','أخرى']];
+const RTYPE=Object.fromEntries(RTYPES);
+/* يعرض قائمة أنواع الخطأ تحت الزر، ثم يرسل البلاغ مع النوع */
+function pickReport(q,src,btn){if(!db||!firebase.auth().currentUser)return;if(btn.nextElementSibling&&btn.nextElementSibling.classList.contains('rtp'))return;
+ btn.style.display='none';
+ const box=document.createElement('div');box.className='rtp';box.style.cssText='margin:8px 0;padding:12px;border:1px solid var(--bd2);border-radius:14px;background:var(--op)';
+ box.innerHTML='<div class="mu" style="margin-bottom:8px">اختر نوع الخطأ:</div>'+RTYPES.map(([k,t])=>`<button class="g rtk" data-k="${k}" style="width:100%;margin-bottom:6px">${esc(t)}</button>`).join('')+'<button class="g rtc" style="width:100%">إلغاء</button>';
+ btn.after(box);
+ box.querySelector('.rtc').onclick=()=>{box.remove();btn.style.display=''};
+ box.querySelectorAll('.rtk').forEach(b=>b.onclick=()=>{box.remove();btn.style.display='';reportQ(q,src,btn,b.dataset.k)});
+}
+function reportQ(q,src,btn,type){const u=firebase.auth().currentUser;if(!db||!u)return;
  btn.disabled=true;btn.textContent='✓ شكراً لك، تم استلام البلاغ';ls.set('rep:'+hid(q.q),'1');
- db.collection('reports').doc(hid(q.q)+'_'+u.uid).set({q:String(q.q),o:(q.o||[]).map(String),c:q.c==null?(q.a==null?null:q.a):q.c,id:String(q.id||''),cat:String(q.cat||''),src,by:u.uid,ts:Date.now()}).catch(()=>{})}
+ const nm=(typeof S!=='undefined'&&S&&S.name)||(typeof jGet==='function'?jGet().name:'')||'';
+ db.collection('reports').doc(hid(q.q)+'_'+u.uid).set({q:String(q.q),o:(q.o||[]).map(String),c:q.c==null?(q.a==null?null:q.a):q.c,id:String(q.id||''),cat:String(q.cat||''),src,by:u.uid,ts:Date.now(),t:String(type||'other'),nm:String(nm).slice(0,60)}).catch(()=>{})}
 async function retryPending(){try{const p=JSON.parse(ls.get('bk')||'null');if(p&&uid&&p.uid===uid){await saveRec(p)}}catch(e){}}
 let _retryT=null;function queueRetry(){clearTimeout(_retryT);_retryT=setTimeout(async()=>{await retryPending();if(ls.get('bk'))queueRetry()},20000)}
 window.addEventListener('online',()=>{retryPending()});
@@ -184,25 +197,28 @@ async function start(){
 }
 function beginSection(si){S.si=si;S.secEnd=Date.now()+SMS;showQ(0)}
 function showQ(i){
- S.qi=i;S.qs=Date.now();S.qEnd=Math.min(Date.now()+QMS,S.secEnd);
+ S.qi=i;S.qs=Date.now();S.shk=0;S.qEnd=Math.min(Date.now()+QMS,S.secEnd);
  try{db.doc('live/'+uid).set({name:S.name,sec:S.si,q:i,ts:Date.now()}).catch(()=>{})}catch(e){}
  const sc=SEC[S.si],it=S.sec[S.si][i];
  app.innerHTML=`<div class="top"><span class="chip">${sc.n}</span><span class="clock">⏱ <span id="st">25:00</span></span></div>
  <div class="seg">${Array.from({length:PER},(_,k)=>`<i class="${k<i?(S.ans[S.si][k]!=null?'d':'m'):k===i?'c':''}"></i>`).join('')}</div>
  <div class="glass noselect"><div class="qh"><span class="mu">سؤال ${i+1} من ${PER} · <b style="color:var(--a1)">${esc(it.cat||'')}</b></span>
  <svg class="ring" id="rg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="26" class="rb"/><circle id="rf" cx="32" cy="32" r="26" class="rf" stroke-dasharray="163.4" stroke-dashoffset="0"/><text id="qt" x="32" y="39" text-anchor="middle">60</text></svg></div>
+ <button class="g rq" style="margin-bottom:10px;width:100%">⚠️ أبلغ عن خطأ في السؤال</button>
  <div class="qq">${esc(it.q)}</div>${it.svg?`<div class="fig">${it.svg}</div>`:''}
  <div id="ops">${it.o.map((o,k)=>`<button class="op" data-k="${k}"><i>${'أبجد'[k]}</i><span>${esc(o)}</span></button>`).join('')}</div>
- <button class="g rq" style="margin-top:8px;width:100%">⚠️ أبلغ عن خطأ في السؤال</button>
 <button class="btn" id="nx" disabled style="margin-top:8px">${i<PER-1?'تأكيد والتالي':'إنهاء القسم'}</button></div>`;
  app.querySelectorAll('.op').forEach(b=>b.onclick=()=>{
   S.ans[S.si][S.qi]=+b.dataset.k;try{navigator.vibrate&&navigator.vibrate(12)}catch(e){}
   app.querySelectorAll('.op').forEach(x=>x.classList.toggle('s',x===b));$('nx').disabled=false});
- $('nx').onclick=nextQ;const rqb=app.querySelector('.rq');if(rqb){if(ls.get('rep:'+hid(it.q))){rqb.disabled=true;rqb.textContent='✓ تم استلام بلاغك'}rqb.onclick=()=>reportQ(it,'exam',rqb)}
+ $('nx').onclick=nextQ;const rqb=app.querySelector('.rq');if(rqb){if(ls.get('rep:'+hid(it.q))){rqb.disabled=true;rqb.textContent='✓ تم استلام بلاغك'}rqb.onclick=()=>pickReport(it,'exam',rqb)}
  clearInterval(tm);tm=setInterval(tick,200);tick();
 }
+/* هزاز: إذا تأخر الطالب 10 ثوانٍ دون إجابة */
+function shakeQ(){const c=app.querySelector('.noselect');if(!c)return;c.classList.remove('shake');void c.offsetWidth;c.classList.add('shake');try{navigator.vibrate&&navigator.vibrate([120,60,120])}catch(e){}}
 function tick(){
  if(!S)return;const n=Date.now();
+ if(!S.shk&&S.ans[S.si][S.qi]==null&&n-S.qs>=10000){S.shk=1;shakeQ()}
  if(n>=S.secEnd){endSection();return}
  if(n>=S.qEnd){nextQ();return}
  const r=Math.ceil((S.qEnd-n)/1000),sr=Math.ceil((S.secEnd-n)/1000);
@@ -250,7 +266,7 @@ function examReport(S){
  const row=(z,k)=>`<div class="rpc"><i class="rpn">${k+1}</i><div class="rpb"><b>${z.t==='q'?'📐':'📝'} ${esc(z.c)}</b><span class="mu">أخطأت في ${z.w} من ${z.n}</span><div class="bar2"><i style="width:${Math.round(z.e*100)}%;background:var(--er)"></i></div>${DEV[z.c]?`<div class="mu" style="margin-top:6px">🧭 ${esc(DEV[z.c])}</div>`:''}</div></div>`;
  return `<div class="glass" style="text-align:right;margin-top:16px"><div class="rpp"><span class="chip">📊 النتيجة</span></div><h2 class="rpt">نتيجتك <em>الفورية</em></h2>
  <div class="kp"><div><span class="mu">الكمي${ung?' (مبدئي)':''}</span><b>${secs[0].c*PT}/${SECMAX}</b></div><div><span class="mu">اللفظي${ung?' (مبدئي)':''}</span><b>${secs[1].c*PT}/${SECMAX}</b></div><div><span class="mu">المجموع${ung?' (مبدئي)':''}</span><b>${C*PT}/${MAXS}</b></div><div><span class="mu">دقتك في المصحَّح فوراً</span><b>${pct}٪</b></div></div>
- ${ung?`<div class="mu" style="margin-top:10px">الدرجة مبدئية: تشمل ${G} سؤالاً صُحّح فوراً. أما الأسئلة الباقية (${ung}) فيصححها المشرف وتُضاف لدرجتك النهائية من ${MAXS}.</div>`:''}</div>
+ ${ung?`<div class="mu" style="margin-top:10px">الدرجة مبدئية: تشمل ${G===1?'سؤالاً واحداً':G===2?'سؤالين':G<=10?String(G).replace(/\d/g,d=>'٠١٢٣٤٥٦٧٨٩'[d])+' أسئلة':String(G).replace(/\d/g,d=>'٠١٢٣٤٥٦٧٨٩'[d])+' سؤالاً'} صُحّح فوراً. أما الأسئلة الباقية (${ung}) فيصححها المشرف وتُضاف لدرجتك النهائية من ${MAXS}.</div>`:''}</div>
  <div class="glass" style="text-align:right"><div class="rpp"><span class="chip">🎯 نقاط التطوير</span></div><h2 class="rpt">وش <em>تحتاج</em> تطوّره</h2>
  ${weak.length?weak.map(row).join(''):(wr?'':'<div class="mu">ما أخطأت في أي سؤال، ممتاز! استمر على نفس المستوى.</div>')}
  ${mid.length?'<div class="mu" style="margin-top:12px">أخطاء بسيطة تحتاج مراجعة سريعة:</div>'+mid.map(z=>`<div class="lv"><span>${z.t==='q'?'📐':'📝'} ${esc(z.c)}</span><span class="mu">أخطأت في ${z.w} من ${z.n}</span></div>`).join(''):''}
@@ -264,9 +280,9 @@ async function finish(){
   answers:S.sec.flatMap((a,si)=>a.map((x,i)=>({id:x.id,t:x.t,pick:S.ans[si][i]==null?-1:x.p?x.p[S.ans[si][i]]:S.ans[si][i],ms:S.tt[si][i]==null?null:Math.min(60000,Math.round(S.tt[si][i]))})))};
  app.innerHTML='<div class="glass" style="text-align:center">جاري حفظ إجاباتك…</div>';
  let ok=true;const AR=art(S),RPT=examReport(S);const REV=EXAM_REVIEW?S.sec.flatMap((g,si)=>g.map((x,i)=>x.id[0]==='g'?{q:x.q,o:x.o,a:x.a,e:x.e,p:S.ans[si][i],c:x.cat,svg:x.svg}:null)).filter(Boolean):[];
- const er=await saveRec(rec);ok=true;if(er)queueRetry();
+ const er=await saveRec(rec);ok=!er;if(er)queueRetry();
  try{await db.doc('live/'+uid).set({name:S.name,done:true,ts:Date.now()})}catch(e){}
- if(ok&&typeof journeyRecord==='function')journeyRecord(S);
+ if(typeof journeyRecord==='function')journeyRecord(S);
  S=null;
  app.innerHTML=`<div class="glass" style="text-align:center">${ok?`<div class="fig art">${AR}</div>`:'<div class="big">⚠️</div>'}<h1 style="font-size:1.8rem">${ok?'أحسنت! تم إرسال اختبارك':'تعذر حفظ الإجابات'}</h1>
  <div class="mu">${ok?'تم حفظ إجاباتك بنجاح، وستصلك النتيجة من المشرف.<br>هذي بصمتك الفنية: كل شعاع سؤال، الحلقة الداخلية للكمي والخارجية للفظي، والأطول يعني إجابة أسرع.':`تعذر الحفظ (${esc(er)}). ${/invalid|argument/.test(er)?'صلاحية حسابك لا تسمح بالحفظ، اطلب من المشرف يرفعها إلى «مساهم» (Contributor) ثم اضغط إعادة المحاولة.':'تأكد من اتصالك ثم اضغط إعادة المحاولة.'}`}</div><br>${ok?'':'<button class="btn" id="rt" style="margin-bottom:10px">🔄 إعادة المحاولة</button>'}<button class="btn" id="hm">الرئيسية</button></div>${ok?RPT:''}`;
@@ -294,7 +310,7 @@ async function adminGate(){
   try{
    const cred=await firebase.auth().signInWithEmailAndPassword($('adminEmail').value.trim(),$('adminPassword').value);
    const role=await db.doc('admins/'+cred.user.uid).get();
-   if(!role.exists || role.data().enabled!==true){await firebase.auth().signOut();await firebase.auth().signInAnonymously();uid=firebase.auth().currentUser.uid;throw new Error('هذا الحساب غير مسجل كمشرف. أضف مستند admins/UID واجعل enabled=true.');}
+   if(!role.exists || role.data().enabled!==true){await firebase.auth().signOut();await firebase.auth().signInAnonymously();uid=firebase.auth().currentUser.uid;throw new Error('هذا الحساب غير مسجّل كمشرف. أضف مستند admins/UID واجعل enabled=true.');}
    uid=cred.user.uid;canAdmin=true;return dash();
   }catch(e){er.textContent=e.code==='auth/invalid-credential'?'البريد أو كلمة المرور غير صحيحة':(e.message||'تعذر تسجيل الدخول');btn.disabled=false;}
  };
@@ -307,7 +323,7 @@ async function dash(){loadXLSX().catch(()=>{});
  let TAB='o',RES=[],LIVE=[],CL=[],lastLB='',CLR=0,ATT=0,GR='',CF=0,AF='',LA=null,WN=30,SQ='';if(d0&&d0.exists)CLR=d0.data().clearedAt||0;const ok=a=>a.id[0]==='g'?gen(a.id).a===a.pick:K[a.id]===a.pick;
  let ROWS=[],REPORTS=[],AUD=[];
  /* ===== تقارير PDF: تقرير فصل (مع بطاقة لكل طالب) + تقرير طالب ===== */
- const RGC=new Map(),qw=n=>n===1?'سؤالاً واحداً':n===2?'سؤالين':n<=10?n+' أسئلة':n+' سؤالاً',dr=n=>n===1?'درجة واحدة':n===2?'درجتين':n<=10?n+' درجات':n+' درجة',lvl=t=>t>=80?'ممتاز':t>=60?'جيد':t>=40?'متوسط':'ضعيف',best=L=>L.reduce((b,r)=>!b||r.tot>b.tot||(r.tot===b.tot&&r.secs<b.secs)?r:b,null);
+ const ad=n=>String(n).replace(/\d/g,d=>'٠١٢٣٤٥٦٧٨٩'[d]),RGC=new Map(),qw=n=>n===1?'سؤالاً واحداً':n===2?'سؤالين':n<=10?ad(n)+' أسئلة':ad(n)+' سؤالاً',dr=n=>n===1?'درجة واحدة':n===2?'درجتين':n<=10?ad(n)+' درجات':ad(n)+' درجة',lvl=t=>t>=80?'ممتاز':t>=60?'جيد':t>=40?'متوسط':'ضعيف',best=L=>L.reduce((b,r)=>!b||r.tot>b.tot||(r.tot===b.tot&&r.secs<b.secs)?r:b,null);
  const skillStats=list=>{const bm=new Map(bank.map(x=>[x.id,x])),C={};let n=0,w=0,s=0,ms=0,mn=0;
   list.forEach(r=>(r.answers||[]).forEach(a=>{let x;if(a.id[0]==='g'){x=RGC.get(a.id);if(!x){x=gen(a.id);RGC.set(a.id,x)}}else x=bm.get(a.id);
    const good=ok(a),un=a.pick==null||a.pick===-1;n++;if(!good)w++;if(un)s++;if(typeof a.ms==='number'&&a.ms>=0){ms+=a.ms;mn++}
@@ -363,21 +379,28 @@ async function dash(){loadXLSX().catch(()=>{});
   ${p.need.length?`<div><b>ما يحتاجه:</b></div><ul>${p.need.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}
   ${p.good.length?`<div class="sm">✅ نقاط قوته: ${p.good.slice(0,6).map(z=>esc(z.c)).join('، ')}</div>`:''}</div>`};
  /* تقرير الطالب: كم جاب + وش يحتاج */
- const studentPage=L=>{const f=L[0],p=profile(L),b=p.b,last=L[L.length-1],avgT=(L.reduce((t,r)=>t+r.tot,0)/L.length).toFixed(1),tr=last.tot-f.tot;
+ const studentPage=L=>{const f=L[0],p=profile(L),b=p.b,last=L[L.length-1],avgT=(L.reduce((t,r)=>t+r.tot,0)/L.length).toFixed(1),tr=last.tot-f.tot,A=L.slice(-5);
+  /* خمس مربعات للمحاولات: كل مربع يعرض الكمي واللفظي والمجموع، والفارغ يعني محاولة لم تُجرَ */
+  const cells=[0,1,2,3,4].map(i=>{const r=A[i],bd=r?'#b8860b':'#cfc6ab',bg=r?'#fffdf7':'#f4f1e8';
+    return r?`<td style="border:2px solid ${bd};background:${bg};border-radius:12px;padding:8px 4px;width:20%;vertical-align:top"><div class="sm">المحاولة ${r.n}</div><div style="font-size:21px;font-weight:800;color:#6b4506;line-height:1.4">${r.tot}</div><div class="sm">من ${MAXS}</div><div style="margin-top:4px;font-size:12px">كمي <b>${r.q}</b>/${SECMAX}</div><div style="font-size:12px">لفظي <b>${r.v}</b>/${SECMAX}</div><div class="sm" style="margin-top:3px">${new Date(r.ts).toLocaleDateString('ar-SA')}</div></td>`
+    :`<td style="border:2px dashed ${bd};background:${bg};border-radius:12px;padding:8px 4px;width:20%;vertical-align:middle"><div class="sm">لم تُجرَ</div><div style="font-size:12px;color:#999;margin:10px 0">—</div></td>`}).join('');
+  const li=(arr,emp)=>arr.length?`<ul>${arr.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:`<div class="sm">${emp}</div>`;
+  const str=[...p.secs.filter(s=>s.p>=80).map(s=>s.n+': '+s.p+'٪'),...p.good.map(z=>z.c)];
+  const wk=[...p.secs.filter(s=>s.p<60).map(s=>s.n+': '+s.p+'٪'),...p.pw.slice(0,5).map(z=>z.c+' (أخطأ في '+z.w+' من '+z.n+')')];
   return `${rhead('تقرير طالب')}
   <div class="bx"><b style="font-size:17px">${esc(f.name)}</b><div class="sm">${esc(f.grade||'')} · فصل ${esc(f.cls||'')}</div></div>
   <div class="kp"><div><b>${L.length} / ${MAXA}</b><span>المحاولات المستخدمة</span></div><div><b>${b.tot}/${MAXS}</b><span>أفضل درجة (محاولة ${b.n})</span></div><div><b>${avgT}</b><span>متوسط الدرجات</span></div><div><b>${last.tot}/${MAXS}</b><span>آخر محاولة</span></div><div><b>${L.length>1?(tr>0?'+':'')+tr:'—'}</b><span>التحسن (أول ← آخر محاولة)</span></div></div>
   <div class="sm" style="margin-top:6px">المستوى حسب أفضل محاولة: <b>${lvl(b.tot)}</b></div>
+  <h2>📦 محاولاته (آخر ٥ محاولات)</h2>
+  <table><tr>${cells}</tr></table>
   <h2>📊 مستواه في الأقسام</h2><div>${secChips(p)}</div>
-  <h2>📋 درجاته في كل محاولة</h2>
-  <table><tr><th>المحاولة</th><th>التاريخ</th><th>الكمي /${SECMAX}</th><th>اللفظي /${SECMAX}</th><th>المجموع /${MAXS}</th><th>الوقت</th><th>تبديل التبويب</th></tr>${L.map(r=>`<tr><td>${r.n}</td><td>${new Date(r.ts).toLocaleDateString('ar-SA')}</td><td>${r.q}</td><td>${r.v}</td><td><b>${r.tot}</b></td><td>${Math.round(r.secs/60)} د</td><td>${r.sw||0}</td></tr>`).join('')}</table>
-  <h2>🎯 وش يحتاج يطوّره</h2>
-  ${p.fl.length?`<div class="bx"><b>مشاكله:</b><ul>${p.fl.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}
-  ${p.pw.length?p.pw.slice(0,6).map(skRow).join(''):'<div class="bx hi">ما أخطأ في أي مهارة محددة.</div>'}
-  ${p.need.length?`<div class="bx"><b>توصيات:</b><ul>${p.need.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}
-  ${p.good.length?`<div class="bx hi">✅ نقاط قوته: ${p.good.map(z=>esc(z.c)).join('، ')}</div>`:''}
+  <h2>💪 نقاط قوته</h2><div class="bx hi">${li(str,'لم تظهر نقاط قوة واضحة بعد، وتحتاج مزيداً من الاختبارات.')}</div>
+  <h2>⚠️ نقاط ضعفه</h2><div class="bx lo">${li(wk,'لا توجد نقطة ضعف بارزة.')}</div>
+  <h2>🎯 وش يحتاج يطوّره</h2><div class="bx">${li(p.need,'لا توجد توصيات حالياً.')}</div>
+  ${p.fl.length?`<h2>🔎 ملاحظات على أدائه</h2><div class="bx">${li(p.fl,'')}</div>`:''}
   ${rfoot}`};
- /* تقرير الفصل: ملخص + أعلى + أقل (مع السبب) + جدول + بطاقة كاملة لكل طالب */
+ 
+  /* تقرير الفصل: ملخص + أعلى + أقل (مع السبب) + جدول + بطاقة كاملة لكل طالب */
  const classPage=(k,L)=>{const[g,c]=k.split('|'),bm=new Map();L.forEach(r=>{const u=r.uid||r.name,b=bm.get(u);if(!b||r.tot>b.tot||(r.tot===b.tot&&r.secs<b.secs))bm.set(u,r)});
   const S=[...bm.values()].sort((a,b)=>b.tot-a.tot||a.secs-b.secs),N=S.length,avg=f=>(S.reduce((t,r)=>t+f(r),0)/N).toFixed(1),hiT=S[0].tot,loT=S[N-1].tot,HI=S.filter(r=>r.tot===hiT),LO=S.filter(r=>r.tot===loT),wk=weakOf(skillStats(L)).slice(0,5),
    stuL=r=>ROWS.filter(x=>(x.uid||x.name)===(r.uid||r.name)).sort((a,b)=>a.n-b.n),PR=new Map(S.map(r=>[r,profile(stuL(r))])),
@@ -395,7 +418,7 @@ async function dash(){loadXLSX().catch(()=>{});
   <div class="pg"><h2>👥 تقرير كل طالب</h2>${S.map(r=>stuCard(r,stuL(r))).join('')}</div>
   ${rfoot}`};
  /* الطباعة الأصلية للمتصفح تعرض العربي سليماً؛ اختر «حفظ كـ PDF» من نافذة الطباعة */
- const makePdf=async(html,fn,btn)=>{
+ const makePdf=async(html,fn,btn)=>{if(window.PDFR&&await window.PDFR.make(html,fn,btn))return;
   const old=btn?btn.textContent:'';if(btn){btn.disabled=true;btn.textContent='⏳ جارٍ التجهيز…'}
   const base=fn.replace(/\.pdf$/i,''),fr=document.createElement('iframe');fr.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';document.body.appendChild(fr);
   const d=fr.contentDocument;d.open();d.write('<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>'+esc(base)+'</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap">'+RCSS+'</head><body><div class="rp">'+html+'</div></body></html>');d.close();
@@ -435,7 +458,7 @@ async function dash(){loadXLSX().catch(()=>{});
    <div class="kp"><div><span class="mu">عدد الاختبارات</span><b>${rows.length}</b></div><div><span class="mu">عدد الطلاب</span><b>${stuSet.size}</b></div><div><span class="mu">متوسط المجموع</span><b>${avgAll}/${MAXS}</b></div><div><span class="mu">مقارنة بالأسبوع السابق</span><b>${fmtD(+avgAll,avgT(prev))}</b></div></div>
    <h2>أداء الفصول</h2><table><tr><th>الفصل</th><th>الاختبارات</th><th>متوسط الكمي</th><th>متوسط اللفظي</th><th>متوسط المجموع</th><th>الأسبوع السابق</th><th>التغيّر</th><th>الأعلى</th></tr>${classRows}</table>
    <h2>أكثر المهارات التي يحتاج الطلاب تطويرها</h2>${weakHtml}
-   <h2>أفضل 10 نتائج</h2><table><tr><th>م</th><th>الاسم</th><th>الصف · الفصل</th><th>المجموع</th></tr>${bestRows}</table>`;
+   <h2>أفضل ١٠ نتائج</h2><table><tr><th>م</th><th>الاسم</th><th>الصف · الفصل</th><th>المجموع</th></tr>${bestRows}</table>`;
   await makePdf(html,'weekly-report-'+new Date(WKs).toISOString().slice(0,10)+'.pdf',btn);
  };
 
@@ -449,7 +472,10 @@ async function dash(){loadXLSX().catch(()=>{});
  };
  const reviewBox=()=>{
   const cut2=s=>String(s).slice(0,90);
-  const groups=new Map();REPORTS.forEach(r=>{const k=r.q;if(!groups.has(k))groups.set(k,{q:r.q,ids:[],by:new Set(),c:r.c,o:r.o||[],id:r.id});const g=groups.get(k);g.ids.push(r.id);g.by.add(r.by)});
+  const groups=new Map();REPORTS.forEach(r=>{const k=r.q;if(!groups.has(k))groups.set(k,{q:r.q,ids:[],by:new Set(),rows:[],c:r.c,o:r.o||[],id:r.id});const g=groups.get(k);g.ids.push(r.id);g.by.add(r.by);g.rows.push(r)});
+  const tc={};REPORTS.forEach(r=>{const k=r.t||'other';tc[k]=(tc[k]||0)+1});
+  const typeChips=Object.keys(tc).map(k=>`<span class="chip">${esc(RTYPE[k]||k)}: ${tc[k]}</span>`).join('');
+  const clsOf=uid=>{const x=ROWS.find(r=>r.uid===uid);return x?clsLabel(x.grade,x.cls):''};
   const gl=[...groups.values()].sort((a,b)=>b.by.size-a.by.size).slice(0,15);
   const bq=new Map();bank.forEach(x=>bq.set(x.id,x));
   const st=new Map();
@@ -466,11 +492,12 @@ async function dash(){loadXLSX().catch(()=>{});
    if(f.length){const b=bq.get(id)||{};const kidx=K[id];flagged.push({id,q:b.q||id,f,ans:b.o&&kidx!=null?b.o[kidx]:''})}});
   const rowsG=gl.map(g=>`<div class="rc"><div class="rn"><b>${esc(cut2(g.q))}</b><span class="mu">${g.by.size} طالب</span></div>
    ${g.o.length?`<div class="mu">الخيارات: ${g.o.map((x,i)=>'«'+i+'» '+esc(cut2(x))).join(' · ')}</div>`:''}
+   <div style="margin-top:6px">${g.rows.slice().sort((a,b)=>(b.ts||0)-(a.ts||0)).map(x=>`<div class="lv"><span><b>${esc(x.nm||'بدون اسم')}</b> <span class="mu">${esc(clsOf(x.by))}</span></span><span class="chip">${esc(RTYPE[x.t]||'أخرى')}</span></div>`).join('')}</div>
    <button class="g rpd" data-ids="${g.ids.join(',')}" style="margin-top:6px">✓ تم حل البلاغ</button></div>`).join('');
   const rowsF=flagged.slice(0,15).map(x=>`<div class="rc"><div class="rn"><b>${esc(cut2(x.q))}</b></div>
    ${x.ans?`<div class="mu">الإجابة في المفتاح: ${esc(cut2(x.ans))}</div>`:''}
    <div style="color:var(--er);font-weight:700">${x.f.map(esc).join('<br>')}</div></div>`).join('');
-  return `<div class="glass" style="margin-bottom:12px"><h2>🚩 بلاغات الطلاب (${new Set(REPORTS.map(r=>r.q)).size} سؤال)</h2>${gl.length?rowsG:'<div class="mu">لا توجد بلاغات 🎉</div>'}</div>
+  return `<div class="glass" style="margin-bottom:12px"><h2>🚩 بلاغات الطلاب (${new Set(REPORTS.map(r=>r.q)).size} سؤال)</h2>${typeChips?`<div style="margin-bottom:8px">${typeChips}</div>`:''}${gl.length?rowsG:'<div class="mu">لا توجد بلاغات 🎉</div>'}</div>
   <div class="glass" style="margin-bottom:12px"><h2>🔎 أسئلة تحتاج مراجعة</h2>${flagged.length?rowsF:'<div class="mu">لا توجد أسئلة مشكوك فيها حالياً</div>'}</div>`;
  };
  const stragglersBox=()=>{

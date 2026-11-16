@@ -448,3 +448,19 @@ details.glass summary{padding:2px 0}
 .rpc{display:flex;gap:14px;align-items:center;padding:14px;margin:10px 0;border-radius:22px;background:var(--op);border:1px solid var(--bd)}
 .rpn{flex:none;width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:1.2rem;background:var(--gold);color:var(--btx);box-shadow:0 0 18px -4px var(--glow)}
 .rpb{flex:1;min-width:0}.rpb>b{display:block}.rpb .bar2{margin-top:8px}
+
+/* =====================================================================
+   تحسينات الإصدار الحالي: وصولية (لوحة المفاتيح، الحركة المخفّضة) وحالات أوضح
+   ===================================================================== */
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--a1);outline-offset:3px;border-radius:6px}
+button:disabled{opacity:.55;cursor:not-allowed}
+input:focus-visible,textarea:focus-visible{outline:2px solid var(--a1);outline-offset:0;border-color:var(--a1)}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
+.err:empty{display:none}
+
+/* هزاز: يهتز سؤال الاختبار إذا تأخر الطالب 10 ثوانٍ دون إجابة */
+@keyframes shk{10%,90%{transform:translateX(-2px)}20%,80%{transform:translateX(4px)}30%,50%,70%{transform:translateX(-7px)}40%,60%{transform:translateX(7px)}}
+.glass.shake{animation:shk .55s cubic-bezier(.36,.07,.19,.97) both!important}
