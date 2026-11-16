@@ -102,25 +102,23 @@ async function waitFrame(f){
 }
 
 /* ---------- تفكيك التقرير إلى كتل قابلة للتقسيم ---------- */
-/* الجداول الطويلة تُقسَّم إلى أجزاء، كل جزء يحمل رأس الجدول */
-function splitTable(t){
-  const rows=[...t.rows];
-  if(rows.length<=22)return[t];
-  const head=rows[0],body=rows.slice(1),out=[];
-  for(let i=0;i<body.length;i+=20){
-    const nt=t.cloneNode(false),tb=document.createElement('tbody');
-    tb.appendChild(head.cloneNode(true));
-    body.slice(i,i+20).forEach(r=>tb.appendChild(r.cloneNode(true)));
-    nt.appendChild(tb);out.push(nt);
-  }
-  return out;
-}
 function flatten(root){
   const out=[];
   const walk=el=>{[...el.children].forEach(c=>{
     if(c.classList.contains('pg')){out.push({brk:true});walk(c);return}
     if(c.tagName==='DIV'&&!c.className){walk(c);return}           /* حاوية بلا تنسيق */
-    if(c.tagName==='TABLE'){splitTable(c).forEach(t=>out.push({html:t.outerHTML}));return}
+    if(c.tagName==='TABLE'){
+      const rows=[...c.rows];
+      if(rows.length>2){
+        out.push({html:c.outerHTML,units:rows.slice(1).map(r=>r.outerHTML),
+          open:c.cloneNode(false).outerHTML.replace(/<\/table>$/,'')+'<tbody>',pre:rows[0].outerHTML,close:'</tbody></table>',tbl:true});
+      }else out.push({html:c.outerHTML});
+      return;
+    }
+    if(c.classList.contains('bx')&&c.children.length>1){
+      out.push({html:c.outerHTML,units:[...c.children].map(x=>x.outerHTML),open:'<div class="'+c.className+'">',pre:'',close:'</div>'});
+      return;
+    }
     out.push({html:c.outerHTML,head:c.tagName==='H1'||c.tagName==='H2'});
   })};
   walk(root);
@@ -138,6 +136,13 @@ function measureAll(f,items){
     const el=kids[k++],cs=d.defaultView.getComputedStyle(el);
     it.h=el.getBoundingClientRect().height+(parseFloat(cs.marginTop)||0)+(parseFloat(cs.marginBottom)||0)+4;
   });
+  items.forEach(it=>{
+    if(!it.units)return;
+    body.innerHTML=it.open+it.pre+it.units.join('')+it.close;
+    const kids=it.tbl?[...body.querySelectorAll('tr')].slice(1):[...body.firstElementChild.children];
+    it.uh=kids.map(x=>{const cs=d.defaultView.getComputedStyle(x);return x.getBoundingClientRect().height+(parseFloat(cs.marginTop)||0)+(parseFloat(cs.marginBottom)||0)});
+    it.pad=Math.max(0,it.h-it.uh.reduce((a,b)=>a+b,0));
+  });
 }
 
 /* ---------- تقسيم الكتل على الصفحات ---------- */
@@ -146,7 +151,29 @@ function pack(items){
   const flush=()=>{if(cur.length)pages.push(cur);cur=[];h=0};
   for(let i=0;i<items.length;i++){
     const it=items[i];
-    if(it.brk){flush();continue}
+    /* فاصل القسم يبدأ صفحة جديدة فقط إذا كانت الصفحة الحالية ممتلئة 60٪ على الأقل */
+    if(it.brk){if(h>LIM*0.6)flush();continue}
+    if(it.units){
+      let units=it.units.slice(),uh=it.uh.slice();
+      const wrap=arr=>it.open+it.pre+arr.join('')+it.close;
+      while(units.length){
+        const total=it.pad+uh.reduce((a,b)=>a+b,0);
+        if(h+total<=LIM){cur.push({html:wrap(units)});h+=total;break}
+        let n=0,acc=it.pad;
+        while(n<units.length&&h+acc+uh[n]<=LIM){acc+=uh[n];n++}
+        if(n===0){if(cur.length){flush();continue}n=1;acc=it.pad+uh[0]}
+        cur.push({html:wrap(units.slice(0,n))});h+=acc;flush();
+        units=units.slice(n);uh=uh.slice(n);
+      }
+      continue;
+    }
+    /* العنوان يسبق أول جزء من الجدول/البطاقة، ولا يُترك وحيداً في آخر الصفحة */
+    if(it.head&&items[i+1]&&items[i+1].units){
+      const nx=items[i+1];
+      if(cur.length&&h+it.h+nx.pad+(nx.uh[0]||0)>LIM)flush();
+      cur.push({html:it.html});h+=it.h;
+      continue;
+    }
     const grp=[it];
     /* العنوان لا يُترك وحيداً في آخر الصفحة */
     if(it.head&&items[i+1]&&!items[i+1].brk){grp.push(items[i+1]);i++}
@@ -178,8 +205,8 @@ async function render(f,pages,setT){
     setT('⏳ جارٍ رسم الصفحة '+(p+1)+' من '+pages.length+'…');
     body.innerHTML=pages[p].join('')+FOOTER;
     await sleep(60);
-    const hgt=Math.max(1200,Math.ceil(body.scrollHeight)+60);
-    f.style.height=hgt+'px';
+    const hgt=Math.max(1,Math.ceil(body.getBoundingClientRect().height));   /* ارتفاع المحتوى الفعلي فقط */
+    f.style.height=Math.max(hgt,300)+'px';
     const cv=await window.html2canvas(body,{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false,width:W,height:hgt,windowWidth:W,windowHeight:hgt});
     if(isBlank(cv))continue;          /* صفحة فارغة: لا تُضاف للملف */
     rendered++;
