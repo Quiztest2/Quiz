@@ -20,7 +20,10 @@ const MAXC=2000;      /* أقصى ارتفاع للصورة لكل صفحة PDF 
 const FOOTER='<div class="pf">منصة عيون للقدرات · مدرسة ثانوية العيون - مسارات</div>';
 
 const CSS=`
+@page{size:A4;margin:10mm}
 html,body{margin:0;padding:0;background:#fff}
+.pdfr tr,.pdfr .bx,.pdfr .lv{break-inside:avoid}
+.pdfr h2,.pdfr h1{break-after:avoid}
 *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 body.pdfr{width:${W}px;direction:rtl;font-family:Cairo,Tahoma,"Segoe UI",sans-serif;color:#1d1a14;font-size:13px;line-height:1.7;padding:0;margin:0}
 .pdfr a{color:inherit;text-decoration:none}
@@ -259,5 +262,28 @@ async function make(html,fn,btn){
   }
 }
 
-window.PDFR={make};
+/* ---------- طباعة التقرير مباشرة من المتصفح (نفس التنسيق) ---------- */
+async function print(html,title){
+  let f=null;
+  try{
+    f=makeFrame();
+    f.style.height='1200px';
+    await waitFrame(f);
+    const tmp=document.createElement('div');tmp.innerHTML=html;
+    f.contentDocument.body.innerHTML=tmp.innerHTML+FOOTER;
+    f.contentDocument.title=title||'';
+    await sleep(120);
+    f.contentWindow.focus();
+    f.contentWindow.print();
+    return true;
+  }catch(e){
+    console.warn('print failed:',e);
+    alert('تعذر فتح نافذة الطباعة. جرّب من متصفح آخر.');
+    return false;
+  }finally{
+    setTimeout(()=>{if(f)f.remove()},120000);
+  }
+}
+
+window.PDFR={make,print};
 })();

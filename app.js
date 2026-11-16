@@ -429,7 +429,7 @@ async function dash(){loadXLSX().catch(()=>{});
   document.title=ot;setTimeout(()=>fr.remove(),120000);
   if(btn){btn.disabled=false;btn.textContent=old}};
  /* التقرير الأسبوعي: اختبارات الأسبوع الحالي (من الأحد 12 ص)، مع أداء كل فصل وأكثر المهارات خطأً */
- const weeklyReport=async(btn)=>{
+ const weeklyReport=async(btn,toPrint)=>{
   const WKs=weekStart(),rows=ROWS.filter(r=>r.ts>=WKs);
   if(!rows.length){alert('لا توجد اختبارات مسجّلة في هذا الأسبوع بعد');return}
   const cat=new Map();bank.forEach(x=>cat.set(x.id,x.cat||'متنوع'));
@@ -459,6 +459,7 @@ async function dash(){loadXLSX().catch(()=>{});
    <h2>أداء الفصول</h2><table><tr><th>الفصل</th><th>الاختبارات</th><th>متوسط الكمي</th><th>متوسط اللفظي</th><th>متوسط المجموع</th><th>الأسبوع السابق</th><th>التغيّر</th><th>الأعلى</th></tr>${classRows}</table>
    <h2>أكثر المهارات التي يحتاج الطلاب تطويرها</h2>${weakHtml}
    <h2>أفضل ١٠ نتائج</h2><table><tr><th>م</th><th>الاسم</th><th>الصف · الفصل</th><th>المجموع</th></tr>${bestRows}</table>`;
+  if(toPrint){if(window.PDFR)window.PDFR.print(html,'التقرير الأسبوعي');return}
   await makePdf(html,'weekly-report-'+new Date(WKs).toISOString().slice(0,10)+'.pdf',btn);
  };
 
@@ -526,11 +527,11 @@ async function dash(){loadXLSX().catch(()=>{});
   pubLB(rows);ROWS=rows;
   const GO=['أول ثانوي','ثاني ثانوي','ثالث ثانوي'],gk=r=>(r.grade||'-')+'|'+(r.cls||'-'),gsort=(x,y)=>{const i=GO.indexOf(x.grade),j=GO.indexOf(y.grade);return(i<0?9:i)-(j<0?9:j)||(x.cls||0)-(y.cls||0)};
   const shown=(ATT?rows.filter(r=>r.n===ATT):rows).filter(r=>(!GR||r.grade===GR)&&(!CF||+r.cls===CF)&&(!SQ||norm(r.name).includes(norm(SQ)))).sort(gsort);
-  const hdr=r=>{const L=shown.filter(x=>gk(x)===gk(r)),av=(L.reduce((s,x)=>s+x.tot,0)/L.length).toFixed(1);return `<div class="gh"><b>🏫 ${esc(clsLabel(r.grade,r.cls))}</b><span class="mu">${L.length} اختبار · المتوسط ${av}/${MAXS} · الأعلى ${Math.max(...L.map(x=>x.tot))}</span><button class="g xg" data-k="${esc(gk(r))}">⬇️ Excel</button><button class="g cpdf" data-k="${esc(gk(r))}">📄 تقرير الفصل PDF</button></div>`};
+  const hdr=r=>{const L=shown.filter(x=>gk(x)===gk(r)),av=(L.reduce((s,x)=>s+x.tot,0)/L.length).toFixed(1);return `<div class="gh"><b>🏫 ${esc(clsLabel(r.grade,r.cls))}</b><span class="mu">${L.length} اختبار · المتوسط ${av}/${MAXS} · الأعلى ${Math.max(...L.map(x=>x.tot))}</span><button class="g xg" data-k="${esc(gk(r))}">⬇️ Excel</button><button class="g cpdf" data-k="${esc(gk(r))}">📄 تقرير الفصل PDF</button><button class="g cprt" data-k="${esc(gk(r))}">🖨️ طباعة</button></div>`};
   const n=rows.length,avg=f=>n?(rows.reduce((s,r)=>s+f(r),0)/n):0;
   const live=LIVE.filter(x=>!x.done&&Date.now()-x.ts<240000);
   const T=[['o','📊 نظرة عامة'],['r','📋 النتائج ('+n+')'],['f','🚩 المتابعة ('+new Set(REPORTS.map(r=>r.q)).size+')'],['a','🔬 تحليل الأسئلة'],['c','🔒 المسجّلون ('+CL.length+')'],['q','📥 الأسئلة']];
-  const tabs=`<div class="tabs">${T.map(t=>`<button class="g pk tb${TAB===t[0]?' on':''}" data-t="${t[0]}">${t[1]}</button>`).join('')}<button class="g pk" id="wr">📅 التقرير الأسبوعي</button></div>`;
+  const tabs=`<div class="tabs">${T.map(t=>`<button class="g pk tb${TAB===t[0]?' on':''}" data-t="${t[0]}">${t[1]}</button>`).join('')}<button class="g pk" id="wr">📅 التقرير الأسبوعي</button><button class="g pk" id="wrp">🖨️ طباعة الأسبوعي</button></div>`;
   const stu=new Map();rows.forEach(r=>{const k=r.uid||r.name,b=stu.get(k);if(!b||r.tot>b.tot)stu.set(k,r)});
   const cmap=new Map();rows.forEach(r=>{const k=gk(r);if(!cmap.has(k))cmap.set(k,[]);cmap.get(k).push(r)});
   const CS=[...cmap.values()].sort((a,b)=>gsort(a[0],b[0])),
@@ -539,7 +540,7 @@ async function dash(){loadXLSX().catch(()=>{});
   const ov=`<div class="kp k3"><div><span class="mu">الاختبارات</span><b>${n}</b></div><div><span class="mu">الطلاب</span><b>${stu.size}</b></div><div><span class="mu">متوسط الدرجة</span><b>${avg(r=>r.tot).toFixed(1)}</b></div>
   <div><span class="mu">متوسط الكمي /${SECMAX}</span><b>${avg(r=>r.q).toFixed(1)}</b></div><div><span class="mu">متوسط اللفظي /${SECMAX}</span><b>${avg(r=>r.v).toFixed(1)}</b></div><div><span class="mu">متوسط الوقت</span><b>${Math.round(avg(r=>r.secs)/60)} د</b></div></div>
   <div class="glass" style="margin-top:14px"><h2><span class="dot"></span>مباشر الآن (${live.length})</h2>${live.length?live.map(x=>`<div class="lv"><span>${esc(x.name)}</span><span class="mu">${SEC[x.sec]?.n||''} · سؤال ${(x.q||0)+1}/${PER}</span></div>`).join(''):'<div class="mu">لا أحد يختبر الآن</div>'}</div>
-  <div class="glass"><h2>🏫 الفصول</h2>${CS.length?CS.map(L=>{const a=(L.reduce((t,x)=>t+x.tot,0)/L.length).toFixed(1);return `<div class="lv"><span><b>${esc(clsLabel(L[0].grade,L[0].cls))}</b></span><span class="mu">${L.length} اختبار · متوسط ${a}/${MAXS} · الأعلى ${Math.max(...L.map(x=>x.tot))}</span><button class="g cpdf" data-k="${esc(gk(L[0]))}">📄 PDF</button></div>`}).join(''):'<div class="mu">لا توجد نتائج بعد</div>'}</div>
+  <div class="glass"><h2>🏫 الفصول</h2>${CS.length?CS.map(L=>{const a=(L.reduce((t,x)=>t+x.tot,0)/L.length).toFixed(1);return `<div class="lv"><span><b>${esc(clsLabel(L[0].grade,L[0].cls))}</b></span><span class="mu">${L.length} اختبار · متوسط ${a}/${MAXS} · الأعلى ${Math.max(...L.map(x=>x.tot))}</span><button class="g cpdf" data-k="${esc(gk(L[0]))}">📄 PDF</button><button class="g cprt" data-k="${esc(gk(L[0]))}">🖨️</button></div>`}).join(''):'<div class="mu">لا توجد نتائج بعد</div>'}</div>
   <div class="glass"><h2>📈 توزيع الدرجات</h2>${bk.map(x=>`<div class="dr"><span class="mu" dir="ltr">${x[0][0]}–${x[0][1]}</span><div class="bar2"><i style="width:${Math.round(x[1]/mxb*100)}%"></i></div><b>${x[1]}</b></div>`).join('')}</div>
   <div class="glass"><h2>🥇 أعلى الطلاب</h2>${top5.length?top5.map((r,i)=>`<div class="lv"><span>${['🥇','🥈','🥉'][i]||(i+1)+'.'} ${esc(r.name)} <small class="mu">${esc(r.grade||'')} · فصل ${esc(r.cls||'')}</small></span><b style="color:var(--a1)">${r.tot}/${MAXS}</b></div>`).join(''):'<div class="mu">لا توجد نتائج بعد</div>'}</div>
   <details class="glass"><summary>⚙️ إجراءات متقدمة</summary><div class="mu" style="margin:8px 0">أسئلة مرفوعة في البنك: ${bank.filter(x=>String(x.id)[0]!=='p').length}</div><button class="g" id="clb" style="width:100%;color:var(--er)">🗑️ مسح كل من في لوحة الشرف</button>
@@ -555,7 +556,7 @@ async function dash(){loadXLSX().catch(()=>{});
   <div class="mu" style="margin:8px 0 6px">تقارير PDF:</div><div class="row"><button class="g" id="cpall">📄 تقارير كل الفصول (ملف واحد)</button></div></details>
   <div class="glass"><h2>📋 النتائج (${shown.length})</h2>${shown.map((r,i)=>(i&&gk(r)===gk(shown[i-1])?'':hdr(r))+`<div class="rc"><div class="rn"><b>${esc(r.name)} <span class="chip">محاولة ${r.n}</span></b><span class="mu">${esc(r.grade||'')} · فصل ${esc(r.cls||'')}</span></div>
   <div class="rs"><span>كمي ${r.q}/${SECMAX}</span><span>لفظي ${r.v}/${SECMAX}</span><b>${r.tot}/${MAXS}</b></div>
-  <div class="mu">⏱ ${Math.round(r.secs/60)} د · تبديل تبويب <span${r.sw>2?' style="color:var(--er)"':''}>${r.sw}</span> · ${new Date(r.ts).toLocaleDateString('ar-SA')}</div><button class="g spdf" data-u="${esc(r.uid||r.name)}" style="margin-top:6px">📄 تقرير الطالب PDF</button> ${r.uid?`<button class="g dl" data-u="${esc(r.uid)}" data-n="${esc(r.name)}" style="color:var(--er);margin-top:6px">🗑️ حذف الطالب واختباراته</button>`:''}</div>`).join('')}${shown.length?'':'<div class="mu">لا توجد نتائج لهذه المحاولة بعد</div>'}</div>`;
+  <div class="mu">⏱ ${Math.round(r.secs/60)} د · تبديل تبويب <span${r.sw>2?' style="color:var(--er)"':''}>${r.sw}</span> · ${new Date(r.ts).toLocaleDateString('ar-SA')}</div><button class="g spdf" data-u="${esc(r.uid||r.name)}" style="margin-top:6px">📄 تقرير الطالب PDF</button> <button class="g sprt" data-u="${esc(r.uid||r.name)}" style="margin-top:6px">🖨️ طباعة</button> ${r.uid?`<button class="g dl" data-u="${esc(r.uid)}" data-n="${esc(r.name)}" style="color:var(--er);margin-top:6px">🗑️ حذف الطالب واختباراته</button>`:''}</div>`).join('')}${shown.length?'':'<div class="mu">لا توجد نتائج لهذه المحاولة بعد</div>'}</div>`;
   
   const cl=`<div class="glass"><h2>🔒 المسجّلون (${CL.length})</h2><div class="mu">لكل اسم ${MAXA} محاولات في الأسبوع، وتتصفّر تلقائياً كل يوم أحد (الأرقام أدناه لهذا الأسبوع). اضغط 🔓 لتصفير محاولات الاسم وإعطائه ${MAXA} جديدة.</div>${CL.map(c=>`<div class="lv"><span>${esc(c.name||'')} <small class="mu">(${(c.ts||0)>=weekStart()?(c.c||1):0}/${MAXA})</small></span><button class="g ul" data-id="${esc(c.id)}">🔓</button></div>`).join('')}</div>`;
 
@@ -621,9 +622,11 @@ async function dash(){loadXLSX().catch(()=>{});
   document.querySelectorAll('.rpd').forEach(b=>b.onclick=async()=>{if(!confirm('سيُحذف هذا البلاغ نهائياً. المتابعة؟'))return;b.disabled=true;audit('حل بلاغ',b.dataset.ids.split(',').length+' بلاغ');try{const ids=b.dataset.ids.split(',');for(let i=0;i<ids.length;i+=400){const bt=db.batch();ids.slice(i,i+400).forEach(id=>bt.delete(db.collection('reports').doc(id)));await bt.commit()}}catch(e){b.disabled=false}});
   {const stuRows=k=>rows.filter(r=>(r.uid||r.name)===k).sort((a,b)=>a.n-b.n),clsRows=k=>rows.filter(r=>gk(r)===k&&(!ATT||r.n===ATT));
    document.querySelectorAll('.cpdf').forEach(b=>b.onclick=()=>{const k=b.dataset.k,L=clsRows(k);if(!L.length){alert('لا توجد نتائج لهذا الفصل في المحاولة المحددة');return}makePdf(classPage(k,L),'class-report-'+k.replace(/[| ]/g,'-')+'.pdf',b)});
+   document.querySelectorAll('.cprt').forEach(b=>b.onclick=()=>{const k=b.dataset.k,L=clsRows(k);if(!L.length){alert('لا توجد نتائج لهذا الفصل في المحاولة المحددة');return}if(window.PDFR)PDFR.print(classPage(k,L),'تقرير فصل')});
    document.querySelectorAll('.spdf').forEach(b=>b.onclick=()=>{const L=stuRows(b.dataset.u);if(!L.length)return;makePdf(studentPage(L),'student-report-'+String(L[0].name).trim().replace(/\s+/g,'-')+'.pdf',b)});
+   document.querySelectorAll('.sprt').forEach(b=>b.onclick=()=>{const L=stuRows(b.dataset.u);if(!L.length)return;if(window.PDFR)PDFR.print(studentPage(L),'تقرير طالب')});
    const cpa=$('cpall');if(cpa)cpa.onclick=()=>{const parts=CS.map(L=>gk(L[0])).map(k=>[k,clsRows(k)]).filter(x=>x[1].length).map((x,i)=>`<div class="${i?'pg':''}">${classPage(x[0],x[1])}</div>`);if(!parts.length){alert('لا توجد نتائج');return}makePdf(parts.join(''),'class-reports-all.pdf',cpa)}}
-  {const wr=$('wr');if(wr)wr.onclick=()=>weeklyReport(wr)}
+  {const wr=$('wr');if(wr)wr.onclick=()=>weeklyReport(wr);const wrp=$('wrp');if(wrp)wrp.onclick=()=>weeklyReport(wrp,true)}
   {const sq=$('sq');if(sq)sq.oninput=()=>{SQ=sq.value;draw();const z=$('sq');if(z){z.focus();try{z.setSelectionRange(SQ.length,SQ.length)}catch(e){}}};const rf=$('rf');if(rf)rf.onclick=()=>{GR='';CF=0;ATT=0;SQ='';draw()}}
   if($('clb'))$('clb').onclick=async()=>{if(!confirm('سيُمسح كل من في لوحة الشرف الآن، وتبقى النتائج محفوظة في المالك. المتابعة؟'))return;CLR=Date.now();lastLB='';audit('مسح لوحة الشرف','');try{await db.doc('leaderboard/top').set({items:[],ts:CLR,clearedAt:CLR,wk:weekStart()});$('clb').textContent='✓ تم مسح لوحة الشرف'}catch(e){$('clb').textContent='تعذر المسح، تأكد من نشر القواعد'}};
   const dbk=$('dbk');if(dbk)dbk.onclick=async()=>{if(!confirm('سيُحذف كل أسئلة البنك ومفاتيح إجاباتها نهائياً ('+bank.length+' سؤال). النتائج المحفوظة تبقى. المتابعة؟'))return;dbk.disabled=true;audit('حذف بنك الأسئلة',bank.length+' سؤال');dbk.textContent='جارٍ الحذف…';
